@@ -7,7 +7,7 @@ It works with permutation of block of 6 lines (720 combinaisons) to store 1 byte
 The dataframe is first sorted by the computed hash of each line. You can also use HMAC 
 if you give a password. This prevents the attacker from finding the secret message. 
 Indexes of each block of 6 lines are used as the source of permutation. A byte is then encoded 
-as the n-the permutation. 
+as the n-th permutation. 
 
 
 # Installation 
