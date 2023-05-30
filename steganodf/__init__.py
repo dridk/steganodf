@@ -1,5 +1,6 @@
 from typing import Callable, Iterable
 import more_itertools as more
+from numpy import remainder
 import pandas as pd
 import hashlib
 import hmac
@@ -74,7 +75,8 @@ def encode_index(indexes: list, message: str) -> list:
     if len(msg) > n_block:
         raise WatermarkingError(f"Cannot store a message more than {n_block} bytes ")
 
-    for i in range(0, size - block_size, block_size):
+    i = 0
+    for i in range(0, size // block_size * block_size, block_size):
         block = indexes[i : i + block_size]
 
         if msg_index < len(msg):
@@ -86,6 +88,9 @@ def encode_index(indexes: list, message: str) -> list:
             transform_block = block
 
         output_list += transform_block
+
+    # Add remainder
+    output_list += indexes[i + block_size : size]
 
     return output_list
 
@@ -108,7 +113,7 @@ def decode_index(indexes: list, sort_indexes: list | None = None) -> str:
     block_size = 6
     message = ""
 
-    for i in range(0, size - block_size, block_size):
+    for i in range(0, size // block_size * block_size, block_size):
         u_block = indexes[i : i + block_size]
         s_block = sort_indexes[i : i + block_size]
         a_byte = more.permutation_index(u_block, s_block)
@@ -148,7 +153,11 @@ def encode_pandas(
     hash_df["hash"] = hash_df.applymap(str).sum(axis=1).apply(hash_function)
     hash_df = hash_df.sort_values("hash").reset_index(drop=True)
 
+    h = hash_df[hash_df["hash"].duplicated()]["hash"].squeeze()
+
     new_index = encode_index(hash_df.index.to_list(), message)
+
+    hash_df.iloc[new_index].to_csv("/tmp/test.csv")
     return hash_df.iloc[new_index].drop("hash", axis=1).reset_index(drop=True)
 
 
