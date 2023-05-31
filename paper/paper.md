@@ -23,34 +23,47 @@ bibliography: paper.bib
 
 ---
 
-# Summary
-CutePeaks is a standalone Sanger trace viewer steered by a modern and user-friendly UI. Unlike other software, CutePeaks comes with two new features: searching for a regular expression and exporting the traces to SVG.    
-CutePeaks is available for Linux, macOS and Windows at [https://labsquare.github.io/CutePeaks/](https://labsquare.github.io/CutePeaks/).
 
-# Statement of need
-Despite the major use of next generation sequencing, the Sanger method is still widely used in genetic labs as the gold standard to read target DNA sequences. Very few open source software is available to explore Sanger trace data and most of labs staff still rely on proprietary software. Moreover, they are not always user-friendly and lack modern look and feel. 
+Plan : 
 
-# State of fields
-4peaks [@4Peaks] is software widely used by biologists that benefits from a nice user interface. Sadly, it is only available on macOS and source code is not open to community enhancement. Seqtrace [@seqtrace] is the only standalone and open source application we could find. However, it is written with the GTK framework in Python 2, the latter being deprecated and slower than C++. 
+# Introduction 
 
-# Software overview
-![CutePeaks screenshot with regular expression search bar.\label{fig:example}](figure.png)
+- La steganographie est l'art de cacher un message
+- bcp d'algorithme et d'outils , mais surtout pour l'images 
+- Surement car dans des données textuel , la payload est trop petites 
+- Il y a bien des methodes qui utilise des caractere ASCII speciaux mais c'est bof 
+- On pourrait altérer les données, mais c'est bof
+- Ici on a choisi de permuter les lignes block de 6, pour stocker 1 bytes
 
-CutePeaks is a cross-platform application implemented in C++ using the open source Qt5 framework. It can read FSA and ABIF file formats, and display the chromatogram with standard controllers.
-The chromatogram is displayed in an interactive window allowing the user to move along the trace. It can also re-scale the plot dynamically using two slider controllers. Finger gestures are also available for scrolling upon using a touch screen.
-Similarly to 4peaks software [@4Peaks], Phred quality scores are displayed behind the trace as a blue histogram. Base calling is displayed at the top of the viewing window, along with adjustable amino-acid translation.
-The trace can be used as with a text editor. Navigating along the trace, copying the sequence to the clipboard or cutting it is done using standard keyboard shortcuts. Revert/complement is also possible.
-An original feature of CutePeaks is the possibility to search for a sequence in the trace using a regular expression. This is especially useful to search for a sequence pattern. For example, the query A[CG]T will search for all instances of ACT or AGT. The query AC+T will select all instances of the form ACT, ACCT, ACCCCT, etc. Finally, the trace data can be exported to different formats, such as FASTA or SVG image, the latter being particularly useful for resolution-independent illustration.
+# Math et meth 
+
+## Encodage 
+- Soit un tableau T ( n x m )
+- Chaque lignes est hashé avec SHA256 + HMAC 
+- On ordonne par hash : Ce sera l'index de références 
+- On groupe les ligne par block_size = 6 
+- 6! largement suffisant pour stocker 1 bytes 
+- On savegarde la payload préalablement compressé 
+- On utilise l'algo X qui permet de calculer la nieme permutation 
+
+## Decodage 
+- on calcul le hash 
+- On reordonne par hash 
+- On calcul le differentiel et on extrait le bytes 
+
+## Gestion des doublons  
+- Les doublons sont généré en créant artificellemetn un index sur la premiere colonnes ordonnée de facon lexicographique 
+
+## Resultats 
+- on a implementer l'outil en python : steganodf 
+- Taille de la payload en fonction de la taille du fichier 
+- Temps de calcul en fonction de la taille du fichier 
+
+## Discussion 
+- C'est indetectable a priori ( il faut le mot de passe ) . si il a les deux fichiers, le nombre de permutation a tester est de X. 
+- C'est facillement sterélisable .. Mais on peut utiliser des fichier en read only
+- 
 
 
-# Installation
 
-CutePeaks is hosted on the GitHub development platform. Continuous integration is provided by GitHub Actions.
-For Linux, an AppImage is provided, that is, distribution agnostic and runs out of the box.
-For Windows, a 32 bits binary compiled with mingw is provided and can be executed as a standalone application without administrator privileges. For macOS, a disk image is provided.
 
-# Acknowledgements
-
-We acknowledge contributions from Jérémie Roquet, and Francisco Pina-Martins.
-
-# References
