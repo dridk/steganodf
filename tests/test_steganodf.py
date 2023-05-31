@@ -22,7 +22,7 @@ def test_decode_indexes():
 def test_encode_and_decode_pandas():
     exp_msg = "sacha"
     df = pd.read_csv(
-        "https://gist.githubusercontent.com/netj/8836201/raw/6f9306ad21398ea43cba4f7d537619d0e07d5ae3/iris.csv"
+        "examples/iris.csv"
     )
 
     # Without password
@@ -36,7 +36,7 @@ def test_encode_and_decode_pandas():
 
 def test_encode_and_decode_hmac():
     df: pd.DataFrame = pd.read_csv(
-        "https://gist.githubusercontent.com/netj/8836201/raw/6f9306ad21398ea43cba4f7d537619d0e07d5ae3/iris.csv"
+        "examples/iris.csv"
     )
 
     df = df.drop_duplicates().reset_index(drop=True)
