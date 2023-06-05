@@ -10,6 +10,8 @@ python = "^3.10"
 more-itertools = "^9.1.0"
 pandas = "^2.0.2"
 
+[tool.poetry.scripts]
+steganodf = "steganodf.__main__:cli"
 
 [build-system]
 requires = ["poetry-core"]

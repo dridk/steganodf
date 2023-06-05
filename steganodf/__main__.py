@@ -39,19 +39,14 @@ def decode(input_file:Path):
     return message
 
     
-
-    
-
-
-
-if __name__ == "__main__":
+def cli():
 
     parser = argparse.ArgumentParser(prog='steganodf', description="a Tool to hide a message in a tabular file")
     subparsers = parser.add_subparsers(dest='command')
 
     # Sous-commande "encode"
     encode_parser = subparsers.add_parser('encode', help='Encode a file')
-    encode_parser.add_argument('--input', "-i", type=Path, required=True, help='Source file (csv,parquet)')
+    encode_parser.add_argument('--input', "-i", type=Path, required=True, help='source file (csv,parquet)')
     encode_parser.add_argument('--output',"-o", type=Path,required=True, help='File with the hidding message (csv,parquet)')
     encode_parser.add_argument('--payload',"-p", type=str, required=True, help='Payload message')
 
@@ -67,6 +62,12 @@ if __name__ == "__main__":
         print(decode(args.input))
     else:
         parser.print_help()
+    
 
 
+
+if __name__ == "__main__":
+
+
+    cli()
 
