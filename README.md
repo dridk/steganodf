@@ -26,6 +26,8 @@ steganodf decode -i iris.w.csv
 
 ```
 
+## From Python
+
 ```python
 import steganodf 
 
