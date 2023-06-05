@@ -1,8 +1,8 @@
 
 # Steganodf 
 
-This is a tool for hiding a secret message in a tabulated file.
-It works by swapping blocks of 6 lines ( 1 bytes ), thus preserving data integrity.
+This is a Python tool for hiding a secret message in a tabulated file ( e.g: CSV file ) .
+It works by swapping blocks of 6 lines, each capable of storing 1 bytes ( 6! > 255 bits ) 
 
 The dataframe is first sorted by the computed hash of each line. HMAC is also supported if you provide a password.
 This method does not alter the data, but the watermark is easily sterilized.
