@@ -1,13 +1,11 @@
 
 # Steganodf 
 
-Steganodf is a tool to hide a secret message in a pandas dataframe by swapping lines. 
-It works with permutation of block of 6 lines (720 combinaisons) to store 1 byte. 
+This is a tool for hiding a secret message in a tabulated file.
+It works by swapping blocks of 6 lines ( 1 bytes ), thus preserving data integrity.
 
-The dataframe is first sorted by the computed hash of each line. You can also use HMAC 
-if you give a password. This prevents the attacker from finding the secret message. 
-Indexes of each block of 6 lines are used as the source of permutation. A byte is then encoded 
-as the n-th permutation. 
+The dataframe is first sorted by the computed hash of each line. HMAC is also supported if you provide a password.
+This method does not alter the data, but the watermark is easily sterilized.
 
 
 # Installation 
@@ -35,9 +33,9 @@ import steganodf
 df = pd.read_csv("https://gist.githubusercontent.com/netj/8836201/raw/6f9306ad21398ea43cba4f7d537619d0e07d5ae3/iris.csv")
 
 # Encode a message
-new_df = steganodf.encode_pandas(df, "made by steganodf")
+new_df = steganodf.encode_pandas(df, "made by steganodf", password="secret")
 
 # Decode a message 
-message = steganodf.decode_pandas(df)
+message = steganodf.decode_pandas(df, password="secret")
 
 ```
