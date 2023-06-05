@@ -32,10 +32,10 @@ import steganodf
  
 df = pd.read_csv("https://gist.githubusercontent.com/netj/8836201/raw/6f9306ad21398ea43cba4f7d537619d0e07d5ae3/iris.csv")
 
-# Encode a message
+# Hide your message 
 new_df = steganodf.encode_pandas(df, "made by steganodf", password="secret")
 
-# Decode a message 
+# Extract your message 
 message = steganodf.decode_pandas(df, password="secret")
 
 ```
