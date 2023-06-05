@@ -18,6 +18,13 @@ pip install steganodf
 
 # Usage 
 
+## From command line 
+```bash 
+
+steganodf encode -i iris.csv -o iris.w.csv -p hello
+steganodf decode -i iris.w.csv 
+
+```
 
 ```python
 import steganodf 
