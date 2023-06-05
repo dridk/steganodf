@@ -6,7 +6,7 @@ import hashlib
 import hmac
 
 
-class WatermarkingError(Exception):
+class PayloadError(Exception):
     pass
 
 
@@ -42,29 +42,29 @@ def _create_hash_fct(
     return hash_function
 
 
-def encode_index(indexes: list, message: str) -> list:
-    """Encode a message by permutation
+def encode_index(indexes: list, payload: str) -> list:
+    """Encode a payload by permutation
 
     This function read the list in block of 6 lines.
     With 6 items, you have 6!=720 possible permutation which is enough to store
     1 byte = 256 first permutations.
-    For each block of 6, it encode the message as a bytearray.
+    For each block of 6, it encode the payload as a bytearray.
 
     Todo :
         Add blocksize as argument
 
     Args:
         indexes(list): a list of unique index
-        message(str): the message to store
+        payload(str): the payload to store
     Return:
-        A new indexes with message encoded
+        A new indexes with payload encoded
     """
 
     if _is_duplicated(indexes):
         raise IndexError("No duplicated elements are allowed")
 
     size = len(list(indexes))
-    msg = message.encode()
+    msg = payload.encode()
 
     block_size = 6
     msg_index = 0
@@ -73,7 +73,7 @@ def encode_index(indexes: list, message: str) -> list:
     n_block = size // block_size
 
     if len(msg) > n_block:
-        raise WatermarkingError(f"Cannot store a message more than {n_block} bytes ")
+        raise PayloadError(f"Cannot store a payload more than {n_block} bytes ")
 
     i = 0
     for i in range(0, size // block_size * block_size, block_size):
@@ -104,14 +104,14 @@ def decode_index(indexes: list, sort_indexes: list | None = None) -> str:
         sort_indexes(list): Same list with a different order
 
     Return:
-        The watermark message
+        The watermark payload
     """
     if sort_indexes is None:
         sort_indexes = sorted(indexes)
 
     size = len(indexes)
     block_size = 6
-    message = ""
+    payload = ""
 
     for i in range(0, size // block_size * block_size, block_size):
         u_block = indexes[i : i + block_size]
@@ -119,28 +119,28 @@ def decode_index(indexes: list, sort_indexes: list | None = None) -> str:
         a_byte = more.permutation_index(u_block, s_block)
 
         if a_byte != 0:
-            message += chr(a_byte)
+            payload += chr(a_byte)
 
-    return message
+    return payload
 
 
 def encode_pandas(
     df: pd.DataFrame,
-    message: str,
+    payload: str,
     password: str | None = None,
     hash_algorithm: str = "sha256",
 ) -> pd.DataFrame:
     """
-    Store a secret message in dataframe by row permutation.
+    Store a secret payload in dataframe by row permutation.
 
-    This function use encode_index to store a message in a dataframe.
+    This function use encode_index to store a payload in a dataframe.
     The dataframe is sorted by hash value of each row with a user defined algorithm.
     Then it uses this sorted dataframe as reference and computed a new sorted
-    dataframe with the message encoded inside.
+    dataframe with the payload encoded inside.
 
     Args:
         df(pd.DataFrame): dataframe to watermark
-        message: message to encode
+        payload: payload to encode
         password(str): If defined, use a HMAC hash function.
         hash_algorithm(str): Algorithm name supported by hashlib
     Return:
@@ -148,17 +148,34 @@ def encode_pandas(
 
     """
 
+    # Create hash function
     hash_function = _create_hash_fct(hash_algorithm, password)
-    hash_df = df.copy()
-    hash_df["hash"] = hash_df.applymap(str).sum(axis=1).apply(hash_function)
-    hash_df = hash_df.sort_values("hash").reset_index(drop=True)
+   
+    # Do not edit original 
+    source_df = df.copy()
+    
+    # Remove duplicated rows and keep it for later  
+    duplicated_df = source_df[source_df.duplicated()]
 
-    h = hash_df[hash_df["hash"].duplicated()]["hash"].squeeze()
+    # Keep only unique rows 
+    source_df = source_df[~source_df.duplicated()]
+    
+    # compute hash 
+    source_df["hash"] =  source_df.applymap(str).sum(axis=1).apply(hash_function)
+    
+    # Sort by hash 
+    source_df = source_df.sort_values("hash").reset_index(drop=True)
 
-    new_index = encode_index(hash_df.index.to_list(), message)
+    # Get new encoded index 
+    new_index = encode_index(source_df.index.to_list(),payload)
 
-    hash_df.iloc[new_index].to_csv("/tmp/test.csv")
-    return hash_df.iloc[new_index].drop("hash", axis=1).reset_index(drop=True)
+    # Get encoded dataframe  
+    new_df = source_df.iloc[new_index].drop("hash", axis=1)
+    
+    # Concat encoded dataframe with the remaining duplicates
+    new_df = pd.concat((new_df, duplicated_df)).reset_index(drop=True)
+    
+    return new_df
 
 
 def decode_pandas(
@@ -175,20 +192,35 @@ def decode_pandas(
     Raise:
         NoWatermarkFound
     Return:
-        The watermark message
+        The watermark payload
 
 
     """
+    
+    # Compute hash function 
     hash_function = _create_hash_fct(hash_algorithm, password)
-    hash_df = df.copy()
-    hash_df["hash"] = hash_df.applymap(str).sum(axis=1).apply(hash_function)
-    hash_df = hash_df.sort_values("hash").reset_index(names="origin_index")
 
+    # keep a copy 
+    encoded_df = df.copy()
+    
+    # remove duplicated rows 
+    new_df = encoded_df[~encoded_df.duplicated()]
+
+    # Reset index and keep as a new column named 'old'
+    new_df = new_df.reset_index(names="old")
+    
+    # Compute hash 
+    new_df["hash"]=new_df.iloc[:, 1:].applymap(str).sum(axis=1).apply(hash_function)
+    
+    # Sort values by hash 
+    new_df = new_df.sort_values("hash").reset_index()
+    
+    # Extract payload 
     try:
-        message = decode_index(
-            hash_df.index.to_list(), hash_df["origin_index"].to_list()
-        )
+        payload = decode_index(new_df.index.to_list(), new_df["old"].to_list())
+    
     except:
-        raise WatermarkingError("Cannot find a watermark")
+        raise PayloadError("Cannot extract a payload")
 
-    return message
+    return payload
+

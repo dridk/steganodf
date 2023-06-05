@@ -1,4 +1,5 @@
-from steganodf import encode_index, decode_index, encode_pandas, decode_pandas
+from steganodf import PayloadError, encode_index, decode_index, encode_pandas, decode_pandas
+import pytest
 import pandas as pd
 import os
 
@@ -19,40 +20,43 @@ def test_decode_indexes():
     assert decode_index(encode_index(indexes, payload)) == payload
 
 
-def test_encode_and_decode_pandas():
-    exp_msg = "sacha"
-    df = pd.read_csv(
-        "examples/iris.csv"
-    )
+def test_encode_pandas():
+    
+    # without duplicate 
+    df = pd.DataFrame([f"s{i}" for  i in range(200)] )
+    new_df = encode_pandas(df, "hello")
+    assert len(df) == len(new_df)
 
-    # Without password
-    encoded = encode_pandas(df, exp_msg)
-
-    assert len(encoded) == len(df)
-
-    msg = decode_pandas(encoded)
-    assert exp_msg == msg
+    # with duplicate 
+    df = pd.DataFrame([f"s{i}" for  i in range(50)] + [f"s{i}" for  i in range(200)] )
+    new_df = encode_pandas(df, "hello")
+    assert len(df) == len(new_df)
 
 
-def test_encode_and_decode_hmac():
-    df: pd.DataFrame = pd.read_csv(
-        "examples/iris.csv"
-    )
-
-    df = df.drop_duplicates().reset_index(drop=True)
-
-    exp_msg = "hello"
-    # With password
-    encoded = encode_pandas(df, exp_msg, password="secret")
-    msg = decode_pandas(encoded, password="secret")
-    assert exp_msg == msg
+def test_decode_pandas():
+    
+    message = "hello"
+    # without duplicate 
+    df = pd.DataFrame([f"s{i}" for  i in range(200)] )
+    new_df = encode_pandas(df, message)
+   
+    assert decode_pandas(new_df) == message
 
 
-def test_decode_csv():
-    path = os.path.join(os.getcwd(), "examples", "iris.watermark.csv")
+    # with duplicate 
+    df = pd.DataFrame([f"s{i}" for  i in range(50)] + [f"s{i}" for  i in range(200)] )
+    new_df = encode_pandas(df, message)
+    assert decode_pandas(new_df) == message
 
-    df = pd.read_csv(path)
 
-    secret = decode_pandas(df)
+    # With password 
+    new_df = encode_pandas(df, message, password="secret")
+    
+    with pytest.raises(PayloadError):
+        decode_pandas(new_df, password="bad_secret")
+    
+    assert decode_pandas(new_df, password="secret") == message
+    
 
-    assert secret == "made by steganodf"
+
+
