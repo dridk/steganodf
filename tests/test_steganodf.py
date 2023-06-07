@@ -4,6 +4,7 @@ import pandas as pd
 import os
 
 
+
 def test_encode_indexes():
     indexes = list(range(100))
     exp_msg = "sacha"
