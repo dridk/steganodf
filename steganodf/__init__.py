@@ -150,31 +150,31 @@ def encode_pandas(
 
     # Create hash function
     hash_function = _create_hash_fct(hash_algorithm, password)
-   
-    # Do not edit original 
+
+    # Do not edit original
     source_df = df.copy()
-    
-    # Remove duplicated rows and keep it for later  
+
+    # Remove duplicated rows and keep it for later
     duplicated_df = source_df[source_df.duplicated()]
 
-    # Keep only unique rows 
+    # Keep only unique rows
     source_df = source_df[~source_df.duplicated()]
-    
-    # compute hash 
-    source_df["hash"] =  source_df.applymap(str).sum(axis=1).apply(hash_function)
-    
-    # Sort by hash 
+
+    # compute hash
+    source_df["hash"] = source_df.applymap(str).sum(axis=1).apply(hash_function)
+
+    # Sort by hash
     source_df = source_df.sort_values("hash").reset_index(drop=True)
 
-    # Get new encoded index 
-    new_index = encode_index(source_df.index.to_list(),payload)
+    # Get new encoded index
+    new_index = encode_index(source_df.index.to_list(), payload)
 
-    # Get encoded dataframe  
+    # Get encoded dataframe
     new_df = source_df.iloc[new_index].drop("hash", axis=1)
-    
+
     # Concat encoded dataframe with the remaining duplicates
     new_df = pd.concat((new_df, duplicated_df)).reset_index(drop=True)
-    
+
     return new_df
 
 
@@ -196,31 +196,30 @@ def decode_pandas(
 
 
     """
-    
-    # Compute hash function 
+
+    # Compute hash function
     hash_function = _create_hash_fct(hash_algorithm, password)
 
-    # keep a copy 
+    # keep a copy
     encoded_df = df.copy()
-    
-    # remove duplicated rows 
+
+    # remove duplicated rows
     new_df = encoded_df[~encoded_df.duplicated()]
 
     # Reset index and keep as a new column named 'old'
     new_df = new_df.reset_index(names="old")
-    
-    # Compute hash 
-    new_df["hash"]=new_df.iloc[:, 1:].applymap(str).sum(axis=1).apply(hash_function)
-    
-    # Sort values by hash 
+
+    # Compute hash
+    new_df["hash"] = new_df.iloc[:, 1:].applymap(str).sum(axis=1).apply(hash_function)
+
+    # Sort values by hash
     new_df = new_df.sort_values("hash").reset_index()
-    
-    # Extract payload 
+
+    # Extract payload
     try:
         payload = decode_index(new_df.index.to_list(), new_df["old"].to_list())
-    
+
     except:
         raise PayloadError("Cannot extract a payload")
 
     return payload
-
