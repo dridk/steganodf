@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "steganodf"
-version = "0.1.3"
+version = "0.1.4"
 description = "Functions to add steganographic message to a dataframe with row permutation"
 authors = ["Sacha Schutz <sacha@labsquare.org>"]
 readme = "README.md"
