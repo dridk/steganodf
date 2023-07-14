@@ -1,13 +1,40 @@
 from typing import Callable, Iterable
 import more_itertools as more
-from numpy import remainder
 import pandas as pd
 import hashlib
+import zlib
 import hmac
-
+from sklearn.decomposition import SparsePCA
+from sklearn.feature_extraction.text import CountVectorizer
 
 class PayloadError(Exception):
     pass
+
+
+
+def sort_by_lexico(array:list)->list:
+    return sorted(array)
+
+def sort_by_bit(array:list)->list:
+
+        def encode(x:str):
+            return sum([b.bit_count() for b in x.encode()])
+        return sorted(array, key=encode)
+
+def sort_by_ngram(array:list, k:int = 2)->list:
+    
+    # First : vectorize each item of the list into the K-mers space  
+    model = CountVectorizer(ngram_range=(k,k), analyzer="char")
+    matrix = model.fit_transform(array).toarray()
+
+    # Second : Project each word in one dimension using a dimension reduction algorithm
+    model = SparsePCA(n_components=1)
+    df = pd.DataFrame(model.fit_transform(matrix))
+    df.index = array
+    return df.sort_values(0).index.to_list()
+
+
+
 
 
 def _is_duplicated(indexes: list) -> bool:
@@ -42,7 +69,7 @@ def _create_hash_fct(
     return hash_function
 
 
-def encode_index(indexes: list, payload: str) -> list:
+def encode_index(indexes: list, payload: str, compress:bool = False) -> list:
     """Encode a payload by permutation
 
     This function read the list in block of 6 lines.
@@ -56,6 +83,7 @@ def encode_index(indexes: list, payload: str) -> list:
     Args:
         indexes(list): a list of unique index
         payload(str): the payload to store
+        compress(bool): Compress payload with zlib 
     Return:
         A new indexes with payload encoded
     """
@@ -63,8 +91,12 @@ def encode_index(indexes: list, payload: str) -> list:
     if _is_duplicated(indexes):
         raise IndexError("No duplicated elements are allowed")
 
+    if compress:
+        msg = zlib.compress(payload.encode())
+    else:
+        msg = payload.encode()
+
     size = len(list(indexes))
-    msg = payload.encode()
 
     block_size = 6
     msg_index = 0
@@ -95,7 +127,7 @@ def encode_index(indexes: list, payload: str) -> list:
     return output_list
 
 
-def decode_index(indexes: list, sort_indexes: list | None = None) -> str:
+def decode_index(indexes: list, sort_indexes: list | None = None, compress: bool = False) -> str:
     """
     Differential decoding by comparing indexes and sorted indexes
 
@@ -111,7 +143,7 @@ def decode_index(indexes: list, sort_indexes: list | None = None) -> str:
 
     size = len(indexes)
     block_size = 6
-    payload = ""
+    payload = bytearray()
 
     for i in range(0, size // block_size * block_size, block_size):
         u_block = indexes[i : i + block_size]
@@ -119,9 +151,15 @@ def decode_index(indexes: list, sort_indexes: list | None = None) -> str:
         a_byte = more.permutation_index(u_block, s_block)
 
         if a_byte != 0:
-            payload += chr(a_byte)
+            payload.append(a_byte)
+    
+    if compress:
+        message = zlib.decompress(payload).decode()
 
-    return payload
+    else:
+        message = payload.decode()
+
+    return message
 
 
 def encode_pandas(
@@ -129,6 +167,7 @@ def encode_pandas(
     payload: str,
     password: str | None = None,
     hash_algorithm: str = "sha256",
+    compress: bool = False
 ) -> pd.DataFrame:
     """
     Store a secret payload in dataframe by row permutation.
@@ -167,7 +206,7 @@ def encode_pandas(
     source_df = source_df.sort_values("hash").reset_index(drop=True)
 
     # Get new encoded index
-    new_index = encode_index(source_df.index.to_list(), payload)
+    new_index = encode_index(source_df.index.to_list(), payload=payload, compress=compress)
 
     # Get encoded dataframe
     new_df = source_df.iloc[new_index].drop("hash", axis=1)
@@ -179,7 +218,7 @@ def encode_pandas(
 
 
 def decode_pandas(
-    df: pd.DataFrame, hash_algorithm: str = "sha256", password=None
+        df: pd.DataFrame, hash_algorithm: str = "sha256", password=None, compress: bool = False
 ) -> str:
     """
     Extract watermark from a dataframe
@@ -217,7 +256,7 @@ def decode_pandas(
 
     # Extract payload
     try:
-        payload = decode_index(new_df.index.to_list(), new_df["old"].to_list())
+        payload = decode_index(new_df.index.to_list(), new_df["old"].to_list(), compress=compress)
 
     except:
         raise PayloadError("Cannot extract a payload")
