@@ -23,8 +23,11 @@ def test_encode_indexes():
 def test_decode_indexes():
     indexes = list(range(100))
     payload = "sacha"
-    assert decode_index(encode_index(indexes, payload)) == payload
 
+    encoded_indexes = encode_index(indexes, payload)
+    decoded_payload = decode_index(encoded_indexes, sorted(indexes))
+    
+    assert payload == decoded_payload
 
 def test_encode_pandas():
     # without duplicate

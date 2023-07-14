@@ -127,7 +127,7 @@ def encode_index(indexes: list, payload: str, compress:bool = False) -> list:
     return output_list
 
 
-def decode_index(indexes: list, sort_indexes: list | None = None, compress: bool = False) -> str:
+def decode_index(indexes: list, sort_indexes: list, compress: bool = False) -> str:
     """
     Differential decoding by comparing indexes and sorted indexes
 
@@ -138,8 +138,6 @@ def decode_index(indexes: list, sort_indexes: list | None = None, compress: bool
     Return:
         The watermark payload
     """
-    if sort_indexes is None:
-        sort_indexes = sorted(indexes)
 
     size = len(indexes)
     block_size = 6
