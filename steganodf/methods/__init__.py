@@ -3,10 +3,11 @@ import functools
 import pandas as pd
 from pathlib import Path
 
-from . import bytesplit
+from . import bytesplit, dumb
 
 METHODS = {
     'bytesplit': bytesplit,
+    'dumb': dumb,
 }
 DEFAULT_METHOD = 'bytesplit'
 

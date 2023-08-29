@@ -1,4 +1,5 @@
 """A dumb method"""
+import pandas as pd
 
 
 def encode(df: pd.DataFrame, writer: callable, message: str, password: None | str = None):
