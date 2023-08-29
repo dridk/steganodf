@@ -1,14 +1,17 @@
 """Import and unify all available methods found in this subpackage"""
+import os
+import glob
+import importlib
 import functools
 import pandas as pd
 from pathlib import Path
 
-from . import bytesplit, dumb
+METHODS = {}
+for modpath in glob.glob(str(Path('steganodf/methods/').absolute() / '*.py')):
+    modname = os.path.splitext(modpath.split('/')[-1])[0]
+    if not modname.startswith('_'):
+        METHODS[modname] = importlib.import_module('steganodf.methods.' + modname)
 
-METHODS = {
-    'bytesplit': bytesplit,
-    'dumb': dumb,
-}
 DEFAULT_METHOD = 'bytesplit'
 
 
