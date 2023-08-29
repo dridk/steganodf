@@ -29,7 +29,7 @@ def dec_verify_encode_input(func: callable):
             raise ValueError(f"File format {extension} is not supported")
         reader, writer = SUPPORTED_FORMATS_IO[extension]
         encoded_df = func(reader(input_file), message, password)
-        writer(encoded_df, output_file, index=None)
+        return writer(encoded_df, output_file, index=None)
     return repl
 
 def dec_verify_decode_input(func: callable):
