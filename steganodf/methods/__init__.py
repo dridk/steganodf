@@ -24,7 +24,8 @@ def dec_verify_encode_input(func: callable):
         if extension not in SUPPORTED_FORMATS_IO:
             raise ValueError(f"File format {extension} is not supported")
         reader, writer = SUPPORTED_FORMATS_IO[extension]
-        return func(reader(input_file), writer(output_file), message, password)
+        return func(reader(input_file), functools.partial(writer, path_or_buf=output_file, index=None), message, password)
+    return repl
 
 def dec_verify_decode_input(func: callable):
     @functools.wraps(func)
@@ -34,6 +35,7 @@ def dec_verify_decode_input(func: callable):
             raise ValueError(f"File Format {extension} is not supported")
         reader, _ = SUPPORTED_FORMATS_IO[extension]
         return func(reader(input_file), password)
+    return repl
 
 
 for name, method in METHODS.items():
@@ -45,5 +47,14 @@ for name, method in METHODS.items():
 
 
 
+def encode(method, *args, **kwargs):
+    if method.lower() not in METHODS:
+        raise ValueError(f"Method {method} doesn't exists. Choose one among {', '.join(METHODS)}")
+    return METHODS[method].encode(*args, **kwargs)
+
+def decode(method, *args, **kwargs):
+    if method.lower() not in METHODS:
+        raise ValueError(f"Method {method} doesn't exists. Choose one among {', '.join(METHODS)}")
+    return METHODS[method].decode(*args, **kwargs)
 
 

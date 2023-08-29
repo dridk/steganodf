@@ -15,12 +15,12 @@ class PayloadError(Exception):
 
 
 def encode(df: pd.DataFrame, writer: callable, message: str, password: None | str = None):
-    encoded_df = st.encode_pandas(df, message, password=password)
-    writer(encoded_df, output_file, index=None)
+    encoded_df = encode_pandas(df, message, password=password)
+    writer(encoded_df)
 
 
-def decode(df: pd.DataFrame, password: None | str):
-    message = st.decode_pandas(df, password=password)
+def decode(df: pd.DataFrame, password: None | str) -> str:
+    message = decode_pandas(df, password=password)
     return message
 
 
@@ -36,7 +36,6 @@ def sort_by_bit(array:list)->list:
         return sorted(array, key=encode)
 
 def sort_by_ngram(array:list, k:int = 2)->list:
-    
     # First : vectorize each item of the list into the K-mers space  
     model = CountVectorizer(ngram_range=(k,k), analyzer="char")
     matrix = model.fit_transform(array).toarray()

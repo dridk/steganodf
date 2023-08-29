@@ -1,8 +1,10 @@
+import os
 import sys
 import argparse
 import steganodf as st
 from pathlib import Path
 
+from . import methods
 from .methods import SUPPORTED_FORMATS_IO, METHODS, DEFAULT_METHOD
 
 
@@ -14,6 +16,7 @@ def get_supported_output_format():
 
 
 def ap_input_file(fname: str) -> Path:
+    fname = Path(fname)
     if not os.path.exists(fname):
         raise argparse.ArgumentError(f"{fname} does not exists")
     if not SUPPORTED_FORMATS_IO.get(fname.suffix, (None, None))[0]:
@@ -21,6 +24,7 @@ def ap_input_file(fname: str) -> Path:
     return Path(fname)
 
 def ap_output_file(fname: str) -> Path:
+    fname = Path(fname)
     if not SUPPORTED_FORMATS_IO.get(fname.suffix, (None, None))[1]:
         raise argparse.ArgumentError(f"{fname} of format {fname.suffix} is not supported. Supported output file format are {', '.join(get_supported_output_format())}")
     return Path(fname)
@@ -52,9 +56,9 @@ def main():
     args = parse_cli()
 
     if args.command == "encode":
-        encode(args.input, args.output, args.message, args.password)
+        methods.encode(args.method, args.input, args.output, args.message, args.password)
     elif args.command == "decode":
-        print(decode(args.input, args.password))
+        print(methods.decode(args.method, args.input, args.password))
 
 
 if __name__ == "__main__":
