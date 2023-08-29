@@ -1,7 +1,7 @@
 [tool.poetry]
 name = "steganodf"
 version = "0.1.4"
-description = "Functions to add steganographic message to a dataframe with row permutation"
+description = "Functions to add hidden message in a dataframe using row permutation"
 authors = ["Sacha Schutz <sacha@labsquare.org>"]
 readme = "README.md"
 
@@ -12,7 +12,7 @@ pandas = "^2.0.2"
 scikit-learn = "^1.3.0"
 
 [tool.poetry.scripts]
-steganodf = "steganodf.__main__:cli"
+steganodf = "steganodf.__main__:main"
 
 [tool.poetry.group.dev.dependencies]
 pytest = "^7.3.1"
