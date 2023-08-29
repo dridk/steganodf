@@ -14,9 +14,9 @@ class PayloadError(Exception):
 
 
 
-def encode(df: pd.DataFrame, writer: callable, message: str, password: None | str = None):
+def encode(df: pd.DataFrame, message: str, password: None | str = None) -> pd.DataFrame:
     encoded_df = encode_pandas(df, message, password=password)
-    writer(encoded_df)
+    return encoded_df
 
 
 def decode(df: pd.DataFrame, password: None | str) -> str:
