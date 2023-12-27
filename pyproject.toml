@@ -1,7 +1,7 @@
 [tool.poetry]
 name = "steganodf"
-version = "0.1.4"
-description = "Functions to add hidden message in a dataframe using row permutation"
+version = "0.2.0"
+description = "A library for hiding a secret message on tabulated data" 
 authors = ["Sacha Schutz <sacha@labsquare.org>"]
 readme = "README.md"
 
