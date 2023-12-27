@@ -1,5 +1,10 @@
 import polars as pl
 
+
+class AlgorithmError(Exception):
+    pass
+
+
 class Algorithm:
 
     def __init__(self, **kwargs):
