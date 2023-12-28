@@ -1,12 +1,7 @@
 
 # Steganodf 
 
-This is a Python tool for hiding a secret message in a tabulated file ( e.g: CSV file ) .
-It works by swapping blocks of 6 lines, each capable of storing 1 bytes ( 6! > 255 bits ) 
-
-The dataframe is first sorted by the computed hash of each line. HMAC is also supported if you provide a password.
-This method does not alter the data, but the watermark is easily sterilized.
-
+A python package for steganography on tabulated data like CSV files.  
 
 # Installation 
 
@@ -19,8 +14,8 @@ pip install steganodf
 ## From command line 
 ```bash 
 
-steganodf encode -i iris.csv -o iris.w.csv -m hello -p password
-steganodf decode -i iris.w.csv -p password
+steganodf encode -i iris.csv -o iris.w.csv -m hello -p password -a bitpool
+steganodf decode -i iris.w.csv -p password -a bitpool
 
 ```
 
@@ -28,14 +23,31 @@ steganodf decode -i iris.w.csv -p password
 
 ```python
 import steganodf 
-
+import pandas as pd
  
 df = pd.read_csv("https://gist.githubusercontent.com/netj/8836201/raw/6f9306ad21398ea43cba4f7d537619d0e07d5ae3/iris.csv")
 
-# Hide your message 
-new_df = steganodf.encode_pandas(df, "made by steganodf", password="secret")
+new_df = steganodf.encode_pandas(df, "made by steganodf", password="secret", algorithm="bitpool")
 
 # Extract your message 
 message = steganodf.decode_pandas(df, password="secret")
 
 ```
+
+
+## Algorithms 
+
+
+### Permutation Methods 
+The payload is hidden in the line permutation. There is no data modification.
+
+- BitPool 
+an algorithm that assigns a bit to each line with Reed Solomon error correction
+
+- BitBlock 
+an algorithm that permutes each block of 6 lines to encode a byte.
+
+### Alteration methods 
+The payload is hidden by minimally alternating the data.
+
+In progress
