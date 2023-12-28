@@ -1,17 +1,23 @@
-from typing import List
+from typing import Callable, List
 import polars as pl
-from steganodf.algorithms.algorithm import Algorithm, AlgorithmError
+from steganodf.algorithms.algorithm import AlgorithmError
 from reedsolo import RSCodec, ReedSolomonError
 import logging
 import hashlib
+import hmac
 
-class BitPool(Algorithm):
+from steganodf.algorithms.permutation_algorithm import PermutationAlgorithm
+
+class BitPool(PermutationAlgorithm):
 
 
-    def __init__(self, **kwargs):
+    def __init__(self, hash_function : Callable = hashlib.md5, password:str = None, **kwargs):
         super().__init__(**kwargs)
 
-        self._hash_function = hashlib.md5
+        self._hash_function = hash_function
+        self._password = password
+
+        
         
     def string_to_bit(self, text:str) -> bool:
         """
@@ -24,7 +30,14 @@ class BitPool(Algorithm):
             bool: a bit representation
 
         """
-        return bool(self._hash_function(text.encode()).digest()[0] % 2)
+
+        if self._password:
+            # Use HMAC 
+            hash = hmac.new(self._password.encode(), text.encode(), self._hash_function)
+        else:
+            hash = self._hash_function(text.encode())
+
+        return bool(hash.digest()[0] % 2)
 
     def find_reed_solo_size(self, bits:List[bool], payload:bytes) -> int:
         """
