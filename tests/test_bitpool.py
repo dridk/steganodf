@@ -1,15 +1,28 @@
+import pytest
 import polars as pl
 from steganodf.algorithms.bitpool import BitPool
 
-def test_encode():
+from .utils import load_parameters
+
+
+dfs, ids = load_parameters()
+
+@pytest.mark.parametrize("df", dfs, ids=ids)
+def test_without_password(df):
 
 	payload = b"hello"
-	df = pl.DataFrame({"a": range(10)})
+	algorithm = BitPool()
+	df_encoded = algorithm.encode(df, payload=payload)
 
-	model = BitPool()
-	
-	df_encoded = model.encode(df, payload=payload)
+	assert payload == algorithm.decode(df_encoded)
 
 
-	#assert model.decode(df_encoded) == payload
+@pytest.mark.parametrize("df", dfs, ids=ids)
+def test_with_password(df):
+
+	payload = b"hello"
+	algorithm = BitPool(password="password")
+	df_encoded = algorithm.encode(df, payload=payload)
+	assert payload == algorithm.decode(df_encoded)
+
 
