@@ -1,11 +1,16 @@
 import os
 import sys
 import argparse
+import polars as pl
 import steganodf as st
 from pathlib import Path
 
-from . import methods
-from .methods import SUPPORTED_FORMATS_IO, METHODS, DEFAULT_METHOD
+from steganodf.algorithms import ALGORITHMS
+
+SUPPORTED_FORMATS_IO = {
+    ".csv": (pl.read_csv, pl.DataFrame.write_csv),
+    ".parquet": (pl.read_parquet, pl.DataFrame.write_parquet),
+}
 
 
 def get_supported_input_format():
@@ -14,7 +19,17 @@ def get_supported_output_format():
     return tuple(o for _, o in SUPPORTED_FORMATS_IO if o and callable(o))
 
 
+def read_file(path:Path) -> pl.DataFrame:
+    reader, _ = SUPPORTED_FORMATS_IO[path.suffix]
+    return reader(path)
 
+
+def write_file(df: pl.DataFrame, path:Path):
+    _, writer = SUPPORTED_FORMATS_IO[path.suffix]
+    writer(df, path)
+    
+
+    
 def ap_input_file(fname: str) -> Path:
     fname = Path(fname)
     if not os.path.exists(fname):
@@ -37,7 +52,7 @@ def parse_cli(args = None) -> argparse.Namespace:
     def add_common_args(subparser):
         subparser.add_argument('input', type=ap_input_file, help="Input file")
         subparser.add_argument('--password', '-p', type=str, required=False, help="Password to use")
-        subparser.add_argument('--method', '-t', type=str, choices=list(METHODS), help="Method to use", default=DEFAULT_METHOD)
+        subparser.add_argument('--algorithm', '-a', type=str, choices=list(ALGORITHMS.keys()), help="Algorithm to use", default="bitpool")
 
     # command "encode"
     encode_parser = subparsers.add_parser('encode', help="Encode given message in the input file data, write it to the output")
@@ -56,10 +71,15 @@ def main():
     args = parse_cli()
 
     if args.command == "encode":
-        methods.encode(args.method, args.input, args.output, args.message, args.password)
-    elif args.command == "decode":
-        print(methods.decode(args.method, args.input, args.password))
 
+        df = read_file(args.input)
+        new_df = st.encode_polars(df, payload=args.message.encode(), algorithm=args.algorithm, password=args.password)
+        write_file(new_df, args.output)
+
+    
+    elif args.command == "decode":
+        df = read_file(args.input)
+        print(st.decode_polars(df, algorithm=args.algorithm, password=args.password).decode())
 
 if __name__ == "__main__":
     main()

@@ -5,12 +5,6 @@ from steganodf.algorithms.algorithm import Algorithm
 from .algorithms import ALGORITHMS, BitPool
 
 
-ALGORITHMS = {
-    "bitpool" : BitPool
-}
-
-
-
 
 def encode_polars(df:pl.DataFrame, payload:bytes, algorithm:str = "bitpool", **kwargs)-> pl.DataFrame:
 
@@ -37,3 +31,4 @@ def decode_pandas(df:pd.DataFrame, algorithm: str = "bitpool", **kwargs)-> bytes
     Algo = ALGORITHMS[algorithm]
     algo = Algo(**kwargs)
     return algo.decode(pl.from_pandas(df))
+
