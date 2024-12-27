@@ -1,11 +1,10 @@
 from typing import Callable, List
 import polars as pl
-from steganodf.algorithms.algorithm import AlgorithmError
-from reedsolo import RSCodec, ReedSolomonError
 import logging
 import hashlib
+from reedsolo import RSCodec, ReedSolomonError
 import hmac
-
+from steganodf.algorithms.algorithm import AlgorithmError
 from steganodf.algorithms.permutation_algorithm import PermutationAlgorithm
 
 class BitPool(PermutationAlgorithm):
@@ -18,10 +17,11 @@ class BitPool(PermutationAlgorithm):
         self._password = password
 
         
-        
+    
     def string_to_bit(self, text:str) -> bool:
         """
-        convert a string to bit using hash function 
+        Hash a string and return the first bit as boolean. 
+        This method is used to associate a bit for each row
 
         Args:
             text: a string input 
@@ -29,45 +29,31 @@ class BitPool(PermutationAlgorithm):
         Returns:
             bool: a bit representation
 
+        >>> algo = BitPool()
+        >>> algo.string_to_bit("hi")
+        True
+
         """
 
         if self._password:
-            # Use HMAC 
+            # Use HMAC if password is set
             hash = hmac.new(self._password.encode(), text.encode(), self._hash_function)
         else:
             hash = self._hash_function(text.encode())
 
         return bool(hash.digest()[0] % 2)
 
-    def find_reed_solo_size(self, bits:List[bool], payload:bytes) -> int:
+
+    def __add_bit_columns(self,df: pl.DataFrame) -> pl.DataFrame:
         """
-        Find the number of redundancy bytes to use in reed solomon
+        Compute bit representation of each row and add it to the dataframe
+        """ 
 
-        Args:
-            bits: pool of bits 
-            payload: any message
-
-        Returns:
-            int: the size used by RSCodec
-
-        """    
-        total_bytes = len(bits) // 8
-
-        while total_bytes > 0:
-            rsc = RSCodec(total_bytes)
-            solo_payload = rsc.encode(payload)
-
-            try:
-                indexes = self.encode_permutation(bits, solo_payload)
-            except:
-                total_bytes -= 1 
-                continue
-            break
-
-        return total_bytes
-    
-    
+        df = df.with_columns(df.cast(pl.Utf8()).sum_horizontal().map_elements(self.string_to_bit, return_dtype=pl.Boolean).alias("bit"))
+        return df
         
+    
+
     def encode(self, df: pl.DataFrame, payload: bytes) -> pl.DataFrame:
         """
         Override method 
@@ -76,28 +62,23 @@ class BitPool(PermutationAlgorithm):
 
         
         """
-        df = df.with_columns(df.cast(pl.Utf8()).sum_horizontal().map_elements(self.string_to_bit).alias("bit"))
+
+        rsc = RSCodec(100)
+        payload = rsc.encode(b"hellosacha" + b"\x00")
+        print(payload)
+        
+        df = self.__add_bit_columns(df)
         bits = [bool(i) for i in df["bit"].to_list()]
    
-        size = self.find_reed_solo_size(bits,payload)
-        size = len(df) // 8 // 2
-        rsc = RSCodec(size)
-        solo_payload = rsc.encode(payload)
-
-        logging.info(size)
-        logging.info(solo_payload)
-        logging.info(len(solo_payload))
-    
         all_indexes = range(len(df))
-        encode_indexes = self.encode_permutation(bits, solo_payload)
+        encode_indexes = self.encode_permutation(bits, payload)
         empty_indexes = list(set(all_indexes) - set(encode_indexes))
 
         encoded_df = pl.concat((df[encode_indexes], df[empty_indexes]))
     
         return encoded_df.select(pl.exclude("bit"))
-
-
     
+
         
     def decode(self, df: pl.DataFrame) -> bytes:
 
@@ -108,23 +89,16 @@ class BitPool(PermutationAlgorithm):
 
         
         """
-        df = df.with_columns(df.cast(pl.Utf8()).sum_horizontal().map_elements(self.string_to_bit).alias("bit"))
+        df = self.__add_bit_columns(df)
         bits = [bool(i) for i in df["bit"].to_list()]
 
-        S = len(df) // 8 // 2
-        rsc = RSCodec( S )
-        message = self.decode_permutation(bits)    
-
+        payload = self.decode_permutation(bits)    
+        rsc = RSCodec(100)
+        payload = rsc.decode(payload)
+        
+        
+        return b"hello"
     
-        for i in range(S, len(df) // 8):
-            try:
-                message = rsc.decode(message[:i])[0]
-                break
-
-            except:
-                pass
-
-        return message
 
 
     def encode_permutation(self, bits:List[bool], payload: bytes) -> List[int]:
@@ -195,3 +169,6 @@ class BitPool(PermutationAlgorithm):
             
             payload.append(byte)
         return bytes(payload)                
+
+
+        
