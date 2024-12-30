@@ -1,25 +1,24 @@
 import pytest
 import polars as pl
-import pandas as pd 
+import numpy as np
 from steganodf.algorithms.bitpool import BitPool
 
-from .utils import load_parameters
 
+def test_without_password():
 
-dfs, ids = load_parameters()
+    N = 1_000_000
+    # Créer un DataFrame Polars à partir des données
+    df = pl.DataFrame({"a": np.random.rand(N), "b": np.random.rand(N)})
 
+    payload = "sacha, je suis sacha et j'aime le chocolat"
+    algorithm = BitPool()
+    df_encoded = algorithm.encode(df, payload=payload)
 
+    decoded_payload = algorithm.decode(df_encoded)
 
+    print(decoded_payload)
 
-@pytest.mark.parametrize("df", dfs, ids=ids)
-def test_without_password(df):
-
-	payload = b"hello"
-	algorithm = BitPool()
-	df_encoded = algorithm.encode(df, payload=payload)
-
-
-	assert payload == algorithm.decode(df_encoded)
+    assert decoded_payload == payload
 
 
 # @pytest.mark.parametrize("df", dfs, ids=ids)
@@ -39,9 +38,9 @@ def test_without_password(df):
 # 	df_encoded = algorithm.encode(dfs[0].cast(pl.Utf8()), payload=payload)
 # 	df_pandas = df_encoded.to_pandas()
 
-# 	# Test with 10 errors 
+# 	# Test with 10 errors
 # 	for i in range(0,error_count):
 # 		df_pandas.iat[i,0] = "@"
-	
-	
+
+
 # 	assert payload == algorithm.decode(pl.from_pandas(df_pandas)), f"with error count = {i}"

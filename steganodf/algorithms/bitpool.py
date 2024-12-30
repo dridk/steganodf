@@ -1,4 +1,4 @@
-from typing import Callable, List
+from typing import Callable, List, Dict
 import polars as pl
 import logging
 import hashlib
@@ -7,30 +7,38 @@ import hmac
 from steganodf.algorithms.algorithm import AlgorithmError
 from steganodf.algorithms.permutation_algorithm import PermutationAlgorithm
 
+
 class BitPool(PermutationAlgorithm):
 
-
-    def __init__(self, hash_function : Callable = hashlib.md5, password:str = None, **kwargs):
+    def __init__(self, bit_per_row: int = 2, hash_function: Callable = hashlib.md5, password: str = None, **kwargs):
         super().__init__(**kwargs)
 
         self._hash_function = hash_function
         self._password = password
+        self._bit_per_row = bit_per_row
 
-        
-    
-    def string_to_bit(self, text:str) -> bool:
+        self._block_size = 20
+        self._corr_size = 30
+        self._separator = b'0xFFFFFF'
+
+        if self._bit_per_row not in (1, 2, 4):
+            raise Exception(f"bit_per_row must be 1,2 or 4")
+
+    def hash(self, text: str) -> int:
         """
-        Hash a string and return the first bit as boolean. 
-        This method is used to associate a bit for each row
+        Compute a fingerprint of a string comming from the concatenation of a row.
+        The result depend of the `bit_per_row`. For instance, using 2 bit per row, the result
+        must be a value between 0 and 3.
 
         Args:
-            text: a string input 
+            text(str): a string data to hash
 
         Returns:
-            bool: a bit representation
+            a integer value encoded using `bit_per_row` bits.
 
-        >>> algo = BitPool()
-        >>> algo.string_to_bit("hi")
+        Example:
+        >>> algo = BitPool(bit_per_row = 2)
+        >>> algo.hash("hello") in (0,1,2,3)
         True
 
         """
@@ -41,134 +49,159 @@ class BitPool(PermutationAlgorithm):
         else:
             hash = self._hash_function(text.encode())
 
-        return bool(hash.digest()[0] % 2)
+        digest = hash.digest()[0]
+        digest = digest >> (8 - self._bit_per_row)
+        return digest
 
-
-    def __add_bit_columns(self,df: pl.DataFrame) -> pl.DataFrame:
+    def compute_hash(self, df: pl.DataFrame) -> pl.DataFrame:
         """
-        Compute bit representation of each row and add it to the dataframe
-        """ 
+        Add a 'hash' column containing the hash fingerprint of the row
+        The result depend on the bit_per_row.
 
-        df = df.with_columns(df.cast(pl.Utf8()).sum_horizontal().map_elements(self.string_to_bit, return_dtype=pl.Boolean).alias("bit"))
+        Args:
+            df (pl.DataFrame): a a Dataframe
+
+        Return:
+            A new dataframe with the 'hash' column computed.
+
+        >>> algo = BitPool()
+        >>> df = pl.DataFrame({"a": range(10)})
+        >>> df = algo.compute_hash(df)
+        >>> "hash" in df.columns
+        True
+
+        """
+
+        df = df.with_columns(df.cast(pl.Utf8()).sum_horizontal().map_elements(self.hash, return_dtype=pl.UInt32).alias("hash"))
         return df
-        
-    
+
+    def create_pool(self, hashes: List[int]) -> Dict[int, int]:
+        """
+        From a list of value, create a dictionnary using list index as key and list value as values
+
+        Args:
+            hashes(list) : this is the hash column from the dataframe
+
+        >>> algo = BitPool()
+        >>> res = algo.create_pool([0,0,1,2,2,3])
+        >>> res[0] == [0,1]
+        True
+        >>> res[1] == [2]
+        True
+        >>> res[2] == [3,4]
+        True
+        >>> res[3] == [5]
+        True
+        """
+        pool = {i: list() for i in range(2**self._bit_per_row)}
+        for i, v in enumerate(hashes):
+            pool[v].append(i)
+
+        # for key in pool.keys():
+        #     random.shuffle(pool[key])
+        return pool
+
+    def get_remaining_indexes(self, pool: Dict[int, int]) -> List[int]:
+        """
+        Return row indices which have not been consuming by the encoder
+        """
+        indexes = []
+        for i in pool.values():
+            indexes.append(i)
+
+        return indexes
 
     def encode(self, df: pl.DataFrame, payload: bytes) -> pl.DataFrame:
         """
-        Override method 
+        Override method
 
-        Encode a payload in dataframe by permutation 
-
-        
+        Encode a payload in dataframe by permutation
         """
 
-        rsc = RSCodec(100)
-        payload = rsc.encode(b"hellosacha" + b"\x00")
-        print(payload)
-        
-        df = self.__add_bit_columns(df)
-        bits = [bool(i) for i in df["bit"].to_list()]
-   
-        all_indexes = range(len(df))
-        encode_indexes = self.encode_permutation(bits, payload)
-        empty_indexes = list(set(all_indexes) - set(encode_indexes))
-
-        encoded_df = pl.concat((df[encode_indexes], df[empty_indexes]))
-    
-        return encoded_df.select(pl.exclude("bit"))
-    
-
-        
-    def decode(self, df: pl.DataFrame) -> bytes:
-
-        """
-        Override method 
-
-        Decode a payload in dataframe by permutation 
-
-        
-        """
-        df = self.__add_bit_columns(df)
-        bits = [bool(i) for i in df["bit"].to_list()]
-
-        payload = self.decode_permutation(bits)    
-        rsc = RSCodec(100)
-        payload = rsc.decode(payload)
-        
-        
-        return b"hello"
-    
-
-
-    def encode_permutation(self, bits:List[bool], payload: bytes) -> List[int]:
-        '''
-        From a random list of bits, returns the indices used to encode the payload
-
-        Args:
-            bits: a random list of boolean representing bits 
-            payload: any messages
-        
-        Args: 
-            A list of indices 
-
-        Raised: 
-            AlgorithmError if bits is not enough
-
-        Examples: 
-        We want to reorder a list of bit to encode the payload b'hi' which is written in binary: 01101000 01101001.
-        
-        >>> algo = BitPool()
-        >>> algo.encode_permutation([1,0,1,0,1,0,1,0,1,0,1,0,1,0,1,0,1,0], b'hi')
-        [1, 0, 2, 3, 4, 5, 7, 9, 11, 6, 8, 13, 10, 15, 17, 12]
-
-       '''
-        pool = [(i, v) for i,v in enumerate(bits)]
-
-        def take(pool:list, bit: bool):
-            for i, (index, val) in enumerate(pool):
-                if val == bit:
-                    pool.remove((index,val))
-                    return index
+        new_df = self.compute_hash(df)
+        payload = payload.encode()
+        pool = self.create_pool(new_df["hash"].to_list())
 
         indexes = []
-        for byte in payload:    
-            bits = [(byte<<i & 128) == 128 for i in range(8)]
-            for bit in bits:
-                index = take(pool, bit)
-                if index is None:
-                    raise AlgorithmError("Not enough bits to encode the payload")
+        rsc = RSCodec(self._corr_size)
 
-                indexes.append(index)
-        return indexes
+        for i in range(0, len(payload), self._block_size):
+            block = payload[i : i + self._block_size]
+            block_with_correction = rsc.encode(block)
+            block_with_correction.extend(self._separator)
+            bloc_indexes = self.encode_chunk(block_with_correction, pool)
+            indexes += bloc_indexes
 
+        # indexes += self.get_remaining_indexes(pool)
 
-    def decode_permutation(self,bits:List[bool]) -> bytes:
-        '''
-        Convert a list of boolean to the payload as a bytearray 
+        return df[indexes]
 
-        Args:
-            bits: a list of boolean representing bits 
+    def decode(self, df: pl.DataFrame) -> bytes:
+        """
+        Override method
 
-        Returns : 
-            A payload as a bytearray
+        Decode a payload in dataframe by permutation
 
-        Examples:
-        We want to decode the list of bit '01101000 01101001' to the ASCII messsage b'hi'
+        """
+
+        new_df = self.compute_hash(df)
+
+        test = self.decode_chunk(new_df["hash"].to_list())
+        rsc = RSCodec(self._corr_size)
+
+        payload = []
+        for i in test.split(self._separator):
+            b = rsc.decode(i)
+            payload.append(b[0].decode())
+
+        payload = "".join(payload)
+
+        return payload
+
+    def encode_chunk(self, chunk: bytes, pool: Dict[int, int]) -> List[int]:
+        """
+        Encode a chunk of bytes in row permutation.
+        This methods consumes bytes from the pool and return row indexes.
 
         >>> algo = BitPool()
-        >>> algo.decode_permutation([False,True,True,False,True, False, False, False, False, True, True, False, True, False , False, True])
-        b'hi'
-            
-        '''
-        payload = bytearray()
-        for i in range(0,len(bits), 8):
+        >>> algo.encode_chunk(b'hi', {0:[1,3,4,12,13,14,15,16], 1:[0,2,5,17,18,19], 2:[6,7,8,20,21,22], 3:[9,10,11,23,24]})
+        [1, 6, 7, 0, 2, 8, 20, 5]
+        """
+
+        # List of row indexes to returnes
+        indexes = []
+        for byte in chunk:
+            # For each bytes, extract bit to use for encoding
+            # For example, using bit_per_row=2, split 1 bytes into 4 part
+            # 00101101 ==> 00 , 10, 11, 01 ==> 0, 2, 3, 1
+
+            mask = 2 ** (self._bit_per_row) - 1
+            for i in range(0, 8, self._bit_per_row):
+                m = mask << i
+                v = (byte & m) >> i
+                try:
+                    indexes.append(pool[v].pop(0))
+                except:
+                    raise Exception("Not enough bits to encode data ")
+        return indexes
+
+    def decode_chunk(self, hashes: List[int]) -> bytes:
+        """
+        Decode chunk from row hashes values.
+
+        Args:
+            hashes(list): the hash list comming from the hash column in encoded dataframe
+
+        """
+        data = bytearray()
+        chunk_size = 8 // self._bit_per_row
+
+        for i in range(0, len(hashes), chunk_size):
+            chunk = hashes[i : i + chunk_size]
             byte = 0
-            for j, v in enumerate(bits[i:i+8]):
-                byte = byte | (v << (7-j))
-            
-            payload.append(byte)
-        return bytes(payload)                
+            for j, val in enumerate(chunk):
+                shift = self._bit_per_row * (j + 1) - self._bit_per_row
+                byte |= val << shift
+            data.append(byte)
 
-
-        
+        return data
