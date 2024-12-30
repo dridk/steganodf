@@ -23,14 +23,14 @@ steganodf decode -i iris.w.csv -p password -a bitpool
 
 ```python
 import steganodf 
-import pandas as pd
+import polars as pl
  
-df = pd.read_csv("https://gist.githubusercontent.com/netj/8836201/raw/6f9306ad21398ea43cba4f7d537619d0e07d5ae3/iris.csv")
+df = pl.read_csv("https://gist.githubusercontent.com/netj/8836201/raw/6f9306ad21398ea43cba4f7d537619d0e07d5ae3/iris.csv")
 
-new_df = steganodf.encode_pandas(df, "made by steganodf", password="secret", algorithm="bitpool")
+new_df = steganodf.encode(df, "made by steganodf", password="secret", algorithm="bitpool")
 
 # Extract your message 
-message = steganodf.decode_pandas(df, password="secret")
+message = steganodf.decode(df, password="secret")
 
 ```
 
