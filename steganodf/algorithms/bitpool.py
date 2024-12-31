@@ -177,6 +177,7 @@ class BitPool(PermutationAlgorithm):
 
         new_df = self.compute_hash(df)
         payload = payload.encode()
+        payload = self.mask_separator(payload)
         pool = self.create_pool(new_df["hash"].to_list())
 
         indexes = []
@@ -209,11 +210,12 @@ class BitPool(PermutationAlgorithm):
         payload = []
         for i in test.split(self._separator):
             b = rsc.decode(i)
-            payload.append(b[0].decode())
+            payload.append(b[0])
 
-        payload = "".join(payload)
+        payload = b"".join(payload)
 
-        return payload
+        payload = self.unmask_separator(payload)
+        return payload.decode()
 
     def encode_chunk(self, chunk: bytes, pool: Dict[int, int]) -> List[int]:
         """
