@@ -1,3 +1,7 @@
 *.vim
 __pycache__/
 venv/
+dist/
+*.ipynb
+*.parquet
+*.csv
