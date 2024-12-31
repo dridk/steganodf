@@ -15,3 +15,6 @@ dependencies = [
 authors = [
   {name="Sacha Schutz", email="sacha.schutz@pm.me"}
 ]
+
+[project.optional-dependencies]
+test = ["pytest", "numpy"]
