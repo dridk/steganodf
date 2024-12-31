@@ -4,6 +4,18 @@ import numpy as np
 from steganodf.algorithms.bitpool import BitPool
 
 
+def test_masking():
+    a = BitPool()
+
+    assert a.mask_separator(b"\xFF\xA1\xF1") == b"\xF1\xF2\xA1\xF1\xF3"
+    assert a.unmask_separator(b"\xF1\xF2\xA1\xF1\xF3") == b"\xFF\xA1\xF1"
+
+    payload = b"hello\xFFsteganodf"
+    mask = a.mask_separator(payload)
+
+    assert a.unmask_separator(mask) == payload
+
+
 def test_without_password():
 
     N = 1_000_000

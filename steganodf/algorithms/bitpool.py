@@ -1,6 +1,5 @@
 from typing import Callable, List, Dict
 import polars as pl
-import logging
 import hashlib
 from reedsolo import RSCodec, ReedSolomonError
 import hmac
@@ -10,7 +9,13 @@ from steganodf.algorithms.permutation_algorithm import PermutationAlgorithm
 
 class BitPool(PermutationAlgorithm):
 
-    def __init__(self, bit_per_row: int = 2, hash_function: Callable = hashlib.md5, password: str = None, **kwargs):
+    def __init__(
+        self,
+        bit_per_row: int = 2,
+        hash_function: Callable = hashlib.md5,
+        password: str = None,
+        **kwargs,
+    ):
         super().__init__(**kwargs)
 
         self._hash_function = hash_function
@@ -19,10 +24,17 @@ class BitPool(PermutationAlgorithm):
 
         self._block_size = 20
         self._corr_size = 30
-        self._separator = b'0xFFFFFF'
+
+        # Replace separator from payload to avoid collision
+        self._separator = b"\xFF"
+        self._separator_mask = b"\xF1"
+        self._separator_replacement = {
+            self._separator: self._separator_mask + b"\xF2",
+            self._separator_mask: self._separator_mask + b"\xF3",
+        }
 
         if self._bit_per_row not in (1, 2, 4):
-            raise Exception(f"bit_per_row must be 1,2 or 4")
+            raise AlgorithmError("bit_per_row must be 1,2 or 4")
 
     def hash(self, text: str) -> int:
         """
@@ -53,6 +65,46 @@ class BitPool(PermutationAlgorithm):
         digest = digest >> (8 - self._bit_per_row)
         return digest
 
+    def mask_separator(self, data: bytes) -> bytes:
+        """
+        Mask separator symbol by replacing it by 2 new bytes A,B.
+        A must also be replace by A and C.
+
+        Args:
+            data(bytes) : Unmask bytes sequence
+
+        Returns:
+            A byte sequence without separator symbol
+
+
+        """
+
+        m = self._separator_replacement
+
+        mask_data = data.replace(self._separator_mask, m[self._separator_mask])
+        mask_data = mask_data.replace(self._separator, m[self._separator])
+
+        return mask_data
+
+    def unmask_separator(self, data: bytes) -> bytes:
+        """
+        Unmask separator symbol by replacing the two replacement bytes by the separator
+
+        Args:
+            data(bytes) : Mask bytes sequence
+
+        Returns:
+            A byte sequence with separator symbol
+
+        """
+
+        m = self._separator_replacement
+
+        mask_data = data.replace(m[self._separator], self._separator)
+        mask_data = mask_data.replace(m[self._separator_mask], self._separator_mask)
+
+        return mask_data
+
     def compute_hash(self, df: pl.DataFrame) -> pl.DataFrame:
         """
         Add a 'hash' column containing the hash fingerprint of the row
@@ -72,7 +124,12 @@ class BitPool(PermutationAlgorithm):
 
         """
 
-        df = df.with_columns(df.cast(pl.Utf8()).sum_horizontal().map_elements(self.hash, return_dtype=pl.UInt32).alias("hash"))
+        df = df.with_columns(
+            df.cast(pl.Utf8())
+            .sum_horizontal()
+            .map_elements(self.hash, return_dtype=pl.UInt32)
+            .alias("hash")
+        )
         return df
 
     def create_pool(self, hashes: List[int]) -> Dict[int, int]:
