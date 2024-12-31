@@ -185,6 +185,8 @@ class BitPool(PermutationAlgorithm):
 
         for i in range(0, len(payload), self._block_size):
             block = payload[i : i + self._block_size]
+            # make sur block have the same size
+            block = block.ljust(self._block_size, b"\n")
             block_with_correction = rsc.encode(block)
             block_with_correction.extend(self._separator)
             bloc_indexes = self.encode_chunk(block_with_correction, pool)
@@ -215,7 +217,7 @@ class BitPool(PermutationAlgorithm):
         payload = b"".join(payload)
 
         payload = self.unmask_separator(payload)
-        return payload.decode()
+        return payload.decode().rstrip()
 
     def encode_chunk(self, chunk: bytes, pool: Dict[int, int]) -> List[int]:
         """
