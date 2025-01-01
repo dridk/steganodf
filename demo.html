@@ -10,32 +10,73 @@
   <title></title>
 
   <style>
+    /* Styles personnalisés */
     .tabs {
-      background-color: red;
       display: flex;
-      flex-direction: row;
+      border-bottom: 2px solid #ccc;
+      margin-bottom: 1em;
     }
 
-    .tabs input[type="radio"] {
-      display: none
-    }
-
-    .tabs label {
+    .tab {
+      padding: 0.5em 1em;
       cursor: pointer;
-      display: inline-block;
-      width: 100px;
-      background-color: blue;
+      border: 1px solid transparent;
+      border-radius: 5px 5px 0 0;
+      background-color: #f9f9f9;
+      transition: background-color 0.3s ease;
+    }
+
+    .tab:hover {
+      background-color: #e0e0e0;
+    }
+
+    input[type="radio"] {
+      display: none;
+    }
+
+    input[type=file]::file-selector-button {
+
+      border: none;
+      padding: 8px 8px;
+      cursor: pointer;
+
+    }
+
+    input[type=file]::file-selector-button:hover {
+
+      background: "red";
+    }
+
+    .tab.active {
+      border-color: #ccc;
+      border-bottom: none;
+      background-color: #fff;
+      font-weight: bold;
     }
 
     .tab-content {
       display: none;
+      border: 1px solid #ccc;
+      padding: 1em;
+      border-radius: 0 0 5px 5px;
+      background-color: #fff;
     }
 
-    .tabs input[type="radio"]:checked+label+.tab-content {
+    /* CSS pour afficher le contenu actif */
+    #tab1:checked~.tabs-content #content1,
+    #tab2:checked~.tabs-content #content2 {
       display: block;
     }
-  </style>
 
+    /* CSS pour l'onglet actif */
+    #tab1:checked~.tabs label[for="tab1"],
+    #tab2:checked~.tabs label[for="tab2"] {
+      font-weight: bold;
+      background-color: #fff;
+      border-color: #ccc;
+      border-bottom: none;
+    }
+  </style>
 </head>
 
 <body>
@@ -48,34 +89,58 @@
 
 
   <div class="container">
+    <p>Lorem ipsum dolor sit amet consectetur adipisicing elit. Quo facilis dolor, ipsa ut dolore quasi, fugiat
+      aspernatur minus optio ea iste nam mollitia. A repellat dicta quas adipisci, rem possimus! </p>
+    <input type="radio" id="tab1" name="tabs" checked>
+    <input type="radio" id="tab2" name="tabs">
 
     <div class="tabs">
-      <input type="radio" name="tabs" id="tab1" checked>
-      <label for="tab1">Encode</label>
-      <div class="tab-content" id="tab1">
-        hello
+      <label for="tab1" class="tab">Encode</label>
+      <label for="tab2" class="tab">Decode</label>
+    </div>
+
+    <div class="tabs-content">
+      <div class="tab-content" id="content1">
+
+        <h2>Select the file you want to encode</h2>
+
+        <div class="row">
+          <label for="Upload a parquet file "></label>
+          <input type="file" id="file-upload" style="width:100%">
+        </div>
+        <div class="row">
+
+          <textarea id="payload" name="payload" style="width:100%; height:200px; margin-top:10px;" placeholder="payload"
+            style="width:100%; margin-top:10px"></textarea>
+
+          <button class="primary">Encode</button>
+
+        </div>
+
       </div>
+      <div class="tab-content" id="content2">
+        <h2>Select the file you want to encode</h2>
 
-      <input type="radio" name="tabs" id="tab2">
-      <label for="tab2">Decode</label>
-      <div class="tab-content" id="tab2">
-        hello
+        <div class="row">
+          <label for="Upload a parquet file "></label>
+          <input type="file" id="file-upload" style="width:100%">
+        </div>
+        <div class="row">
+
+          <textarea id="payload" name="payload" style="width:100%; height:200px; margin-top:10px;" placeholder="payload"
+            style="width:100%; margin-top:10px"></textarea>
+
+          <button class="primary">Encode</button>
+        </div>
       </div>
-
-
     </div>
 
 
-  </div>
-
-
-  <label for="Upload a parquet file "></label>
-  <input type="file" id="file-upload">
 
 
 
 
-  <script type="py" config="pyscript.json">
+    <script type="py" config="pyscript.json">
 
 #  import polars as pl
 #  import steganodf as st
