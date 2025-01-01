@@ -1,0 +1,8 @@
+{
+  "packages": [
+    "duckdb",
+    "reedsolo",
+    "dist/polars-1.18.0-cp39-abi3-emscripten_3_1_58_wasm32.whl",
+    "dist/steganodf-0.3.0-py2.py3-none-any.whl"
+  ]
+}

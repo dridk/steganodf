@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=">
+  <link rel="stylesheet" href="https://pyscript.net/releases/2024.11.1/core.css">
+  <script type="module" src="https://pyscript.net/releases/2024.11.1/core.js"></script>
+  <link rel="stylesheet" href="https://cdn.rawgit.com/Chalarangelo/mini.css/v3.0.1/dist/mini-default.min.css">
+  <title></title>
+
+  <style>
+    .tabs {
+      background-color: red;
+      display: flex;
+      flex-direction: row;
+    }
+
+    .tabs input[type="radio"] {
+      display: none
+    }
+
+    .tabs label {
+      cursor: pointer;
+      display: inline-block;
+      width: 100px;
+      background-color: blue;
+    }
+
+    .tab-content {
+      display: none;
+    }
+
+    .tabs input[type="radio"]:checked+label+.tab-content {
+      display: block;
+    }
+  </style>
+
+</head>
+
+<body>
+
+  <header>
+    <a href="#" class="logo">Steganodf</a>
+    Hide a secret message in a tabular dataset
+  </header>
+
+
+
+  <div class="container">
+
+    <div class="tabs">
+      <input type="radio" name="tabs" id="tab1" checked>
+      <label for="tab1">Encode</label>
+      <div class="tab-content" id="tab1">
+        hello
+      </div>
+
+      <input type="radio" name="tabs" id="tab2">
+      <label for="tab2">Decode</label>
+      <div class="tab-content" id="tab2">
+        hello
+      </div>
+
+
+    </div>
+
+
+  </div>
+
+
+  <label for="Upload a parquet file "></label>
+  <input type="file" id="file-upload">
+
+
+
+
+  <script type="py" config="pyscript.json">
+
+#  import polars as pl
+#  import steganodf as st
+#  import io
+#  import os
+#  import duckdb
+#  from js import document, window, Uint8Array
+#  from pyodide.ffi.wrappers import add_event_listener
+#  
+#  async def upload_file_and_show(e):
+#    file_list = e.target.files
+#    first_item = file_list.item(0)
+#
+#    my_bytes: bytes = await get_bytes_from_file(first_item)
+#
+#    with open("test.csv", "wb") as file:
+#      file.write(my_bytes)
+#
+#    df = pl.read_csv("test.csv")
+#
+#    new_df = st.encode(df, "hello")
+#
+#    payload = st.decode(new_df)
+#
+#    print(payload)
+#
+#  async def get_bytes_from_file(file):
+#    array_buf = await file.arrayBuffer()
+#    return array_buf.to_bytes()
+# 
+#
+#  add_event_listener(document.getElementById("file-upload"), "change", upload_file_and_show)
+#
+
+
+  </script>
+
+
+
+
+</body>
+
+</html>
