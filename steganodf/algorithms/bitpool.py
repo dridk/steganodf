@@ -124,12 +124,7 @@ class BitPool(PermutationAlgorithm):
 
         """
 
-        df = df.with_columns(
-            df.cast(pl.Utf8())
-            .sum_horizontal()
-            .map_elements(self.hash, return_dtype=pl.UInt32)
-            .alias("hash")
-        )
+        df = df.with_columns(df.cast(pl.Utf8()).sum_horizontal().map_elements(self.hash, return_dtype=pl.UInt32).alias("hash"))
         return df
 
     def create_pool(self, hashes: List[int]) -> Dict[int, int]:
@@ -176,7 +171,6 @@ class BitPool(PermutationAlgorithm):
         """
 
         new_df = self.compute_hash(df)
-        payload = payload.encode()
         payload = self.mask_separator(payload)
         pool = self.create_pool(new_df["hash"].to_list())
 
@@ -217,7 +211,7 @@ class BitPool(PermutationAlgorithm):
         payload = b"".join(payload)
 
         payload = self.unmask_separator(payload)
-        return payload.decode().rstrip()
+        return payload.rstrip()
 
     def encode_chunk(self, chunk: bytes, pool: Dict[int, int]) -> List[int]:
         """
