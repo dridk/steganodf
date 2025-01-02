@@ -30,11 +30,20 @@ def test_without_password(df: pl.DataFrame):
 
 def test_encode(df: pl.DataFrame):
 
-    payload = b"sacha, je suis sacha et j'aime le chocolat"
+    payload = b"bob leponge"
     algorithm = BitPool()
     df_encoded = algorithm.encode(df, payload=payload)
 
     print(len(df_encoded), len(df))
+
+
+def test_decode(df: pl.DataFrame):
+
+    payload = b"bob leponge"
+    algorithm = BitPool()
+    df_encoded = algorithm.encode(df, payload=payload)
+
+    payload = algorithm.decode(df_encoded)
 
 
 def test_with_password(df: pl.DataFrame):

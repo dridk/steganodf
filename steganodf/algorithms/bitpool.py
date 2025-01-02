@@ -193,18 +193,20 @@ class BitPool(PermutationAlgorithm):
             block = self.mask_separator(block)
 
             # Add seperator
-            block.extend(self._separator)
+            block += self._separator
             # consume block until not enough bits
             try:
                 backup_pool = copy.deepcopy(pool)
                 bloc_indexes = self.encode_chunk(block, pool)
                 indexes += bloc_indexes
+
             except NotEnoughBitException:
                 pool = backup_pool
                 break
 
         remains = self.get_remaining_indexes(pool)
         indexes += remains
+
         return df[indexes]
 
     def decode(self, df: pl.DataFrame) -> bytes:
@@ -216,19 +218,24 @@ class BitPool(PermutationAlgorithm):
         """
 
         new_df = self.compute_hash(df)
+        raw = self.decode_chunk(new_df["hash"].to_list())
 
-        test = self.decode_chunk(new_df["hash"].to_list())
+        # Recuperation des block
+        blocks = []
         rsc = RSCodec(self._corr_size)
+        for block in raw.split(self._separator):
+            if block:
+                block = self.unmask_separator(block)
+                if rsc.check(block):
+                    blocks.append(block)
 
-        payload = []
-        for i in test.split(self._separator):
-            b = rsc.decode(i)
-            payload.append(b[0])
+        blocks = b"".join(blocks)
+        data = io.BytesIO(blocks)
+        payload = lt.decode.decode(data)
 
-        payload = b"".join(payload)
+        print(payload)
 
-        payload = self.unmask_separator(payload)
-        return payload.rstrip()
+        return payload
 
     def encode_chunk(self, chunk: bytes, pool: Dict[int, List[int]]) -> List[int]:
         """
@@ -252,10 +259,8 @@ class BitPool(PermutationAlgorithm):
                 m = mask << i
                 v = (byte & m) >> i
                 try:
-                    item = pool[v].pop(0)
-                    save.append(item)
-                    indexes.append(item)
-                except Exception:
+                    indexes.append(pool[v].pop(0))
+                except Exception as e:
                     raise NotEnoughBitException("Not enough bits to encode data ")
         return indexes
 
