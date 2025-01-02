@@ -28,6 +28,15 @@ def test_without_password(df: pl.DataFrame):
     assert decoded_payload == payload
 
 
+def test_encode(df: pl.DataFrame):
+
+    payload = b"sacha, je suis sacha et j'aime le chocolat"
+    algorithm = BitPool()
+    df_encoded = algorithm.encode(df, payload=payload)
+
+    print(len(df_encoded), len(df))
+
+
 def test_with_password(df: pl.DataFrame):
 
     payload = b"hello"

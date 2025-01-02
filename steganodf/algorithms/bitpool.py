@@ -2,9 +2,16 @@ from typing import Callable, List, Dict
 import polars as pl
 import hashlib
 from reedsolo import RSCodec, ReedSolomonError
+import lt
 import hmac
+import io
+import copy
 from steganodf.algorithms.algorithm import AlgorithmError
 from steganodf.algorithms.permutation_algorithm import PermutationAlgorithm
+
+
+class NotEnoughBitException(Exception):
+    pass
 
 
 class BitPool(PermutationAlgorithm):
@@ -159,7 +166,7 @@ class BitPool(PermutationAlgorithm):
         """
         indexes = []
         for i in pool.values():
-            indexes.append(i)
+            indexes += i
 
         return indexes
 
@@ -171,23 +178,33 @@ class BitPool(PermutationAlgorithm):
         """
 
         new_df = self.compute_hash(df)
-        payload = self.mask_separator(payload)
+        # payload = self.mask_separator(payload)
         pool = self.create_pool(new_df["hash"].to_list())
 
         indexes = []
         rsc = RSCodec(self._corr_size)
+        data = io.BytesIO(payload)
+        for block in lt.encode.encoder(data, self._block_size):
 
-        for i in range(0, len(payload), self._block_size):
-            block = payload[i : i + self._block_size]
-            # make sur block have the same size
-            block = block.ljust(self._block_size, b"\n")
-            block_with_correction = rsc.encode(block)
-            block_with_correction.extend(self._separator)
-            bloc_indexes = self.encode_chunk(block_with_correction, pool)
-            indexes += bloc_indexes
+            # Add reed solomon error corection code
+            block = rsc.encode(block)
 
-        # indexes += self.get_remaining_indexes(pool)
+            # Hide separator
+            block = self.mask_separator(block)
 
+            # Add seperator
+            block.extend(self._separator)
+            # consume block until not enough bits
+            try:
+                backup_pool = copy.deepcopy(pool)
+                bloc_indexes = self.encode_chunk(block, pool)
+                indexes += bloc_indexes
+            except NotEnoughBitException:
+                pool = backup_pool
+                break
+
+        remains = self.get_remaining_indexes(pool)
+        indexes += remains
         return df[indexes]
 
     def decode(self, df: pl.DataFrame) -> bytes:
@@ -213,7 +230,7 @@ class BitPool(PermutationAlgorithm):
         payload = self.unmask_separator(payload)
         return payload.rstrip()
 
-    def encode_chunk(self, chunk: bytes, pool: Dict[int, int]) -> List[int]:
+    def encode_chunk(self, chunk: bytes, pool: Dict[int, List[int]]) -> List[int]:
         """
         Encode a chunk of bytes in row permutation.
         This methods consumes bytes from the pool and return row indexes.
@@ -235,9 +252,11 @@ class BitPool(PermutationAlgorithm):
                 m = mask << i
                 v = (byte & m) >> i
                 try:
-                    indexes.append(pool[v].pop(0))
-                except:
-                    raise Exception("Not enough bits to encode data ")
+                    item = pool[v].pop(0)
+                    save.append(item)
+                    indexes.append(item)
+                except Exception:
+                    raise NotEnoughBitException("Not enough bits to encode data ")
         return indexes
 
     def decode_chunk(self, hashes: List[int]) -> bytes:
