@@ -189,7 +189,6 @@ class BitPool(PermutationAlgorithm):
             # Add reed solomon error corection code
             block = rsc.encode(block)
 
-            print(block)
             # Hide separator
             block = self.mask_separator(block)
 
@@ -217,7 +216,6 @@ class BitPool(PermutationAlgorithm):
         Decode a payload in dataframe by permutation
 
         """
-        print("DECODE")
         new_df = self.compute_hash(df)
         raw = self.decode_chunk(new_df["hash"].to_list())
 
@@ -235,9 +233,18 @@ class BitPool(PermutationAlgorithm):
 
         blocks = b"".join(blocks)
         data = io.BytesIO(blocks)
-        payload = lt.decode.decode(data)
 
-        print(payload)
+        decoder = lt.decode.LtDecoder()
+        # print(data, len(data.read()))
+        for block in lt.decode.read_blocks(data):
+            decoder.consume_block(block)
+
+            if decoder.is_done():
+                break
+
+        payload = decoder.bytes_dump()
+
+        return payload
 
     def encode_chunk(self, chunk: bytes, pool: Dict[int, List[int]]) -> List[int]:
         """

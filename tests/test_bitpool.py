@@ -17,7 +17,7 @@ def test_masking():
 
 def test_without_password(df: pl.DataFrame):
 
-    payload = b"sacha, je suis sacha et j'aime le chocolat"
+    payload = b"hellosdfsfsfsfsfsf sf sfs f "
     algorithm = BitPool()
     df_encoded = algorithm.encode(df, payload=payload)
 
@@ -30,20 +30,20 @@ def test_without_password(df: pl.DataFrame):
 
 def test_encode(df: pl.DataFrame):
 
-    payload = b"bob leponge"
+    payload = b"dsfsdfsdf sdfzkejrze rze rzer zfsd fs"
     algorithm = BitPool()
     df_encoded = algorithm.encode(df, payload=payload)
 
-    print(len(df_encoded), len(df))
+    assert len(df_encoded) == len(df)
 
 
 def test_decode(df: pl.DataFrame):
 
-    payload = b"bob leponge"
+    payload = b"hello sacha, je suis boby"
     algorithm = BitPool()
     df_encoded = algorithm.encode(df, payload=payload)
 
-    payload = algorithm.decode(df_encoded)
+    assert algorithm.decode(df_encoded) == payload
 
 
 def test_with_password(df: pl.DataFrame):
@@ -54,17 +54,30 @@ def test_with_password(df: pl.DataFrame):
     assert payload == algorithm.decode(df_encoded)
 
 
-# @pytest.mark.parametrize("error_count", range(10))
-# def test_with_error(error_count):
+@pytest.mark.parametrize("error_count", range(20))
+def test_with_error(df, error_count):
 
-# 	payload = b"hello"
-# 	algorithm = BitPool(password="password")
-# 	df_encoded = algorithm.encode(dfs[0].cast(pl.Utf8()), payload=payload)
-# 	df_pandas = df_encoded.to_pandas()
+    payload = b"hello"
+    algorithm = BitPool()
+    df_encoded = algorithm.encode(df, payload=payload)
 
-# 	# Test with 10 errors
-# 	for i in range(0,error_count):
-# 		df_pandas.iat[i,0] = "@"
+    df_encoded = df_encoded.to_pandas()
+    # Test with 10 errors
+    for i in range(0, error_count):
+        df_encoded.iat[i, 0] = -10
+
+    assert payload == algorithm.decode(pl.from_pandas(df_encoded)), f"with error count = {i}"
 
 
-# 	assert payload == algorithm.decode(pl.from_pandas(df_pandas)), f"with error count = {i}"
+@pytest.mark.parametrize("error_count", range(1, 20))
+def test_with_deletion(df, error_count):
+
+    payload = b"hello"
+    algorithm = BitPool()
+    df_encoded = algorithm.encode(df, payload=payload)
+
+    df_encoded = df_encoded.to_pandas()
+    # Test with 10 errors
+    index = df_encoded.sample(error_count).index
+    df_encoded = df_encoded.drop(index)
+    assert payload == algorithm.decode(pl.from_pandas(df_encoded)), f"with error count = {i}"
