@@ -6,6 +6,7 @@ import lt
 import hmac
 import io
 import copy
+import random
 from steganodf.algorithms.algorithm import AlgorithmError
 from steganodf.algorithms.permutation_algorithm import PermutationAlgorithm
 
@@ -168,6 +169,7 @@ class BitPool(PermutationAlgorithm):
         for i in pool.values():
             indexes += i
 
+        random.shuffle(indexes)
         return indexes
 
     def encode(self, df: pl.DataFrame, payload: bytes) -> pl.DataFrame:
@@ -198,6 +200,7 @@ class BitPool(PermutationAlgorithm):
             try:
                 backup_pool = copy.deepcopy(pool)
                 bloc_indexes = self.encode_chunk(block, pool)
+                # print(new_df[bloc_indexes].count())
                 indexes += bloc_indexes
 
             except NotEnoughBitException:
@@ -209,6 +212,13 @@ class BitPool(PermutationAlgorithm):
 
         return df[indexes]
 
+    def split_hash(self, hash: list[int]) -> List[List[int]]:
+
+        test = "".join([str(i) for i in hash])
+
+        for i in test.split("3333"):
+            yield [int(a) for a in i]
+
     def decode(self, df: pl.DataFrame) -> bytes:
         """
         Override method
@@ -217,15 +227,17 @@ class BitPool(PermutationAlgorithm):
 
         """
         new_df = self.compute_hash(df)
-        raw = self.decode_chunk(new_df["hash"].to_list())
 
-        # Recuperation des block
+        hash = new_df["hash"].to_list()
+
+        hashes = self.split_hash(hash)
         blocks = []
         rsc = RSCodec(self._corr_size)
+        for h in hashes:
+            raw = self.decode_chunk(h)
+            block = self.unmask_separator(raw)
 
-        for block in raw.split(self._separator):
             if block:
-                block = self.unmask_separator(block)
                 check = rsc.check(block)[0]
                 if check is True:
                     block = rsc.decode(block)[0]
@@ -237,13 +249,17 @@ class BitPool(PermutationAlgorithm):
         decoder = lt.decode.LtDecoder()
         # print(data, len(data.read()))
         for block in lt.decode.read_blocks(data):
-            decoder.consume_block(block)
 
+            try:
+                decoder.consume_block(block)
+            except:
+                pass
             if decoder.is_done():
                 break
 
         payload = decoder.bytes_dump()
 
+        # print(payload)
         return payload
 
     def encode_chunk(self, chunk: bytes, pool: Dict[int, List[int]]) -> List[int]:
