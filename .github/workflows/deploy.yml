@@ -11,3 +11,9 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v2 
+
+      - name: Deploy page
+        uses: JamesIves/github-pages-deploy-action@v4 
+        with:
+          folder: www
+          token: ${{ secrets.GITHUB_TOKEN }} 
