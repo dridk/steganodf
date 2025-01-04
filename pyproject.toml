@@ -17,4 +17,4 @@ authors = [
 ]
 
 [project.optional-dependencies]
-dev= ["pytest", "numpy", "twine", "build"]
+dev= ["pytest", "numpy", "twine", "build", "pandas", "pyarrow"]
