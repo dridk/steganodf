@@ -73,6 +73,62 @@ class BitPool(PermutationAlgorithm):
         digest = digest >> (8 - self._bit_per_row)
         return digest
 
+    def get_separator_values(self) -> List[int]:
+        """
+        Return separator as it is displayed in dataframe hash column
+
+        Examples:
+
+            if seperator = 0xFF and bit_per_row = 4
+            Then separator = 1111 1111 = [16,16]
+
+            >>> a = BitPool(bit_per_row = 4)
+            >>> a.get_separator_values()
+            [15, 15]
+
+            >>> a = BitPool(bit_per_row = 2)
+            >>> a.get_separator_values()
+            [3, 3, 3, 3]
+
+            >>> a = BitPool(bit_per_row = 1)
+            >>> a.get_separator_values()
+            [1, 1, 1, 1, 1, 1, 1, 1]
+        """
+        result = [2 ** (self._bit_per_row) - 1] * (8 // self._bit_per_row)
+
+        return result
+
+    def split_by_separator(self, hash: List[int], separator: List[int]) -> List[int]:
+        """
+        Split a list by a sub list separator
+
+        >>> hash = [1,2,3,4,1,1,1,4,5,5,1,1,1,1,4,2]
+        >>> a = BitPool()
+        >>> a.split_by_separator(hash, [1,1,1])
+        [[1, 2, 3, 4], [4, 5, 5], [1, 4, 2]]
+        """
+
+        window = len(separator)
+        i = 0
+        results = []
+        temp = []
+
+        while i < len(hash):
+            if hash[i : i + window] == separator:
+                if temp:
+                    results.append(temp)
+                    temp = []
+                i += window
+
+            else:
+                temp.append(hash[i])
+                i += 1
+
+        if temp:
+            results.append(temp)
+
+        return results
+
     def mask_separator(self, data: bytes) -> bytes:
         """
         Mask separator symbol by replacing it by 2 new bytes A,B.
