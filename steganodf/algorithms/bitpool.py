@@ -283,20 +283,21 @@ class BitPool(PermutationAlgorithm):
 
         """
 
+        # read hash rows
         new_df = self.compute_hash(df)
-
         hash = new_df["hash"].to_list()
+
         rsc = RSCodec(self._corr_size)
+        decoder = lt.decode.LtDecoder()
 
         window = (self.get_block_size()) * (2**self._bit_per_row)
+        success = False
         valid_blocs = []
 
-        print(window)
         for i in range(0, len(hash)):
 
             chunk = hash[i : i + window]
             bloc = self.decode_chunk(chunk)
-
             if len(bloc) == self.get_block_size():
                 # Remove separator
                 bloc = bloc[:-1]
@@ -304,22 +305,21 @@ class BitPool(PermutationAlgorithm):
                 if check[0]:
                     bloc = rsc.decode(bloc)[0]
                     valid_blocs.append(bloc)
+                    data = io.BytesIO(bloc)
+                    header = lt.decode._read_header(data)
+                    block = lt.decode._read_block(header[1], data)
+                    decoder.consume_block((header, block))
 
-        s = set([str(i) for i in valid_blocs])
+                    if decoder.is_done():
+                        success = True
+                        break
 
-        data = b"".join(valid_blocs)
-        data = io.BytesIO(data)
+        if success:
+            payload = decoder.bytes_dump()
 
-        decoder = lt.decode.LtDecoder()
-        for block in lt.decode.read_blocks(data):
-            try:
-                decoder.consume_block(block)
-            except:
-                pass
-            if decoder.is_done():
-                break
+        else:
+            payload = "error" + b"".join(valid_blocs)
 
-        payload = decoder.bytes_dump()
         return payload
 
     def encode_chunk(self, chunk: bytes, pool: Dict[int, List[int]]) -> List[int]:
