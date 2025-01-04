@@ -1,3 +1,5 @@
+.PHONY: build-site
+
 install:
 	python -m pip install -e ".[all]"
 test:
@@ -11,4 +13,7 @@ dev:
 
 wheel:
 	python -m build --wheel
+	
+build-site:
+	./build_site.sh
 	
