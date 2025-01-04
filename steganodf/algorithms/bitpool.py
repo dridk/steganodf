@@ -32,9 +32,9 @@ class BitPool(PermutationAlgorithm):
 
         self._block_size = 20
         self._corr_size = 30
-
-        # Replace separator from payload to avoid collision
+        self._LT_HEADER_SIZE = 12
         self._separator = b"\xFF"
+
         self._separator_mask = b"\xF1"
         self._separator_replacement = {
             self._separator: self._separator_mask + b"\xF2",
@@ -72,6 +72,12 @@ class BitPool(PermutationAlgorithm):
         digest = hash.digest()[0]
         digest = digest >> (8 - self._bit_per_row)
         return digest
+
+    def get_block_size(self) -> int:
+        """
+        Return size of a complete block
+        """
+        return self._block_size + self._corr_size + self._LT_HEADER_SIZE + len(self._separator)
 
     def get_separator_values(self) -> List[int]:
         """
@@ -247,21 +253,18 @@ class BitPool(PermutationAlgorithm):
         indexes = []
         rsc = RSCodec(self._corr_size)
         data = io.BytesIO(payload)
+        t = []
         for block in lt.encode.encoder(data, self._block_size):
 
             # Add reed solomon error corection code
             block = rsc.encode(block)
-
-            # Hide separator
-            block = self.mask_separator(block)
-
             # Add seperator
             block += self._separator
             # consume block until not enough bits
             try:
                 backup_pool = copy.deepcopy(pool)
                 bloc_indexes = self.encode_chunk(block, pool)
-                # print(new_df[bloc_indexes].count())
+                t.append(block)
                 indexes += bloc_indexes
 
             except NotEnoughBitException:
@@ -270,15 +273,7 @@ class BitPool(PermutationAlgorithm):
 
         remains = self.get_remaining_indexes(pool)
         indexes += remains
-
         return df[indexes]
-
-    def split_hash(self, hash: list[int]) -> List[List[int]]:
-
-        test = "".join([str(i) for i in hash])
-
-        for i in test.split("3333"):
-            yield [int(a) for a in i]
 
     def decode(self, df: pl.DataFrame) -> bytes:
         """
@@ -287,30 +282,36 @@ class BitPool(PermutationAlgorithm):
         Decode a payload in dataframe by permutation
 
         """
+
         new_df = self.compute_hash(df)
 
         hash = new_df["hash"].to_list()
-
-        hashes = self.split_hash(hash)
-        blocks = []
         rsc = RSCodec(self._corr_size)
-        for h in hashes:
-            raw = self.decode_chunk(h)
-            block = self.unmask_separator(raw)
 
-            if block:
-                check = rsc.check(block)[0]
-                if check is True:
-                    block = rsc.decode(block)[0]
-                    blocks.append(block)
+        window = (self.get_block_size()) * (2**self._bit_per_row)
+        valid_blocs = []
 
-        blocks = b"".join(blocks)
-        data = io.BytesIO(blocks)
+        print(window)
+        for i in range(0, len(hash)):
+
+            chunk = hash[i : i + window]
+            bloc = self.decode_chunk(chunk)
+
+            if len(bloc) == self.get_block_size():
+                # Remove separator
+                bloc = bloc[:-1]
+                check = rsc.check(bloc)
+                if check[0]:
+                    bloc = rsc.decode(bloc)[0]
+                    valid_blocs.append(bloc)
+
+        s = set([str(i) for i in valid_blocs])
+
+        data = b"".join(valid_blocs)
+        data = io.BytesIO(data)
 
         decoder = lt.decode.LtDecoder()
-        # print(data, len(data.read()))
         for block in lt.decode.read_blocks(data):
-
             try:
                 decoder.consume_block(block)
             except:
@@ -319,8 +320,6 @@ class BitPool(PermutationAlgorithm):
                 break
 
         payload = decoder.bytes_dump()
-
-        # print(payload)
         return payload
 
     def encode_chunk(self, chunk: bytes, pool: Dict[int, List[int]]) -> List[int]:
