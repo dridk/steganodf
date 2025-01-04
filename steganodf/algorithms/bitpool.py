@@ -2,13 +2,13 @@ from typing import Callable, List, Dict
 import polars as pl
 import hashlib
 from reedsolo import RSCodec, ReedSolomonError
-import lt
 import hmac
 import io
 import copy
 import random
 from steganodf.algorithms.algorithm import AlgorithmError
 from steganodf.algorithms.permutation_algorithm import PermutationAlgorithm
+from steganodf import lt
 
 
 class NotEnoughBitException(Exception):
@@ -132,7 +132,12 @@ class BitPool(PermutationAlgorithm):
 
         """
 
-        df = df.with_columns(df.cast(pl.Utf8()).sum_horizontal().map_elements(self.hash, return_dtype=pl.UInt32).alias("hash"))
+        df = df.with_columns(
+            df.cast(pl.Utf8())
+            .sum_horizontal()
+            .map_elements(self.hash, return_dtype=pl.UInt32)
+            .alias("hash")
+        )
         return df
 
     def create_pool(self, hashes: List[int]) -> Dict[int, int]:
