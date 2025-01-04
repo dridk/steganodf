@@ -17,7 +17,7 @@ def test_masking():
 
 def test_without_password(df: pl.DataFrame):
 
-    payload = b"hello sacha"
+    payload = b"hellosdfsfsfsfsfsf sf sfs f "
     algorithm = BitPool()
     df_encoded = algorithm.encode(df, payload=payload)
 
@@ -39,7 +39,7 @@ def test_encode(df: pl.DataFrame):
 
 def test_decode(df: pl.DataFrame):
 
-    payload = b"hello sacha le chat"
+    payload = b"hello sacha, je suis boby"
     algorithm = BitPool()
     df_encoded = algorithm.encode(df, payload=payload)
 
@@ -54,8 +54,8 @@ def test_with_password(df: pl.DataFrame):
     assert payload == algorithm.decode(df_encoded)
 
 
-# @pytest.mark.parametrize("error_count", range(5))
-def test_with_error(df):
+@pytest.mark.parametrize("error_count", range(100))
+def test_with_error(df, error_count):
 
     payload = b"hello"
     algorithm = BitPool()
@@ -63,13 +63,13 @@ def test_with_error(df):
 
     df_encoded = df_encoded.to_pandas()
     # Test with 10 errors
-    for i in range(0, 2):
+    for i in range(0, error_count):
         df_encoded.iat[i, 0] = -10
 
     assert payload == algorithm.decode(pl.from_pandas(df_encoded)), f"with error count = {i}"
 
 
-@pytest.mark.parametrize("error_count", range(1, 5))
+@pytest.mark.parametrize("error_count", range(1, 100))
 def test_with_deletion(df, error_count):
 
     payload = b"hello"
