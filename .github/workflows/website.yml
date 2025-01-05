@@ -3,7 +3,7 @@ name: Deploy steganodf web page
 on:
   push:
     branches:
-      - deploy
+      - refactor
 permissions:
   contents: write
     
