@@ -1,4 +1,5 @@
 import pytest
+import random
 import polars as pl
 from steganodf.algorithms.bitpool import BitPool
 
@@ -54,19 +55,27 @@ def test_with_password(df: pl.DataFrame):
     assert payload == algorithm.decode(df_encoded)
 
 
-@pytest.mark.parametrize("error_count", range(100))
+@pytest.mark.parametrize("error_count", range(0, 1000, 100))
 def test_with_error(df, error_count):
 
     payload = b"hello"
-    algorithm = BitPool()
+    algorithm = BitPool(bit_per_row=2)
     df_encoded = algorithm.encode(df, payload=payload)
 
     df_encoded = df_encoded.to_pandas()
     # Test with 10 errors
-    for i in range(0, error_count):
-        df_encoded.iat[i, 0] = -10
 
-    assert payload == algorithm.decode(pl.from_pandas(df_encoded)), f"with error count = {i}"
+    size = df_encoded.shape[0] * df_encoded.shape[1]
+    cells = list(range(0, size))
+    cells = random.sample(cells, error_count)
+    for index in cells:
+        x = index % df.shape[0]
+        y = index // df.shape[0]
+        df_encoded.iat[x, y] = -10
+
+    assert payload == algorithm.decode(
+        pl.from_pandas(df_encoded)
+    ), f"with error count = {error_count}"
 
 
 @pytest.mark.parametrize("error_count", range(1, 100))
