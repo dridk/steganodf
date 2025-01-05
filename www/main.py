@@ -54,9 +54,12 @@ def encode(e):
 
 def decode(e):
     print("decode")
-
+    bit_per_row = int(document.querySelector("#bit-select").value)
+    password = document.querySelector("#password").value
+    password = None if password == "" else password
+    
     if dataframe is not None:
-        payload = st.decode(dataframe)
+        payload = st.decode(dataframe, bit_per_row = bit_per_row, password=password)
         document.querySelector("#payload").value = payload.decode()
 
 
