@@ -318,7 +318,7 @@ class BitPool(PermutationAlgorithm):
             payload = decoder.bytes_dump()
 
         else:
-            payload = "error" + b"".join(valid_blocs)
+            payload = b"error" + b"".join(valid_blocs)
 
         return payload
 
