@@ -7,7 +7,6 @@ from pyodide.ffi.wrappers import add_event_listener
 
 dataframe = None
 
-
 async def upload_encode(e):
     """
     Get data for encoding
@@ -22,6 +21,8 @@ async def upload_encode(e):
     stream = io.BytesIO(data)
     dataframe = pl.read_csv(stream)
 
+    
+
     document.querySelector("#row-count").innerText = str(len(dataframe))
 
 
@@ -29,9 +30,12 @@ def encode(e):
     print("encode", e)
     payload = document.querySelector("#payload").value.encode()
     dl_button = document.querySelector("#download")
-
+    bit_per_row = int(document.querySelector("#bit-select").value)
+    password = document.querySelector("#password").value
+    password = None if password == "" else password
+    
     if dataframe is not None:
-        df = st.encode(dataframe, payload)
+        df = st.encode(dataframe, payload, bit_per_row = bit_per_row, password=password)
         stream = io.BytesIO()
         df.write_csv(stream)
         size = len(stream.getvalue())
