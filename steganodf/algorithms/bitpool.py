@@ -290,7 +290,7 @@ class BitPool(PermutationAlgorithm):
         rsc = RSCodec(self._corr_size)
         decoder = lt.decode.LtDecoder()
 
-        window = (self.get_block_size()) * (2**self._bit_per_row)
+        window = self.get_packet_size() * 8 // self._bit_per_row
         success = False
         valid_blocs = []
 
