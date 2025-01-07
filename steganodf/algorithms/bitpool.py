@@ -135,6 +135,11 @@ class BitPool(PermutationAlgorithm):
 
         return results
 
+    def find_packet(self, df: pl.DataFrame, max_window=100) -> Tuple[int, int, int]:
+
+        new_df = self.compute_hash(df)
+        hash = new_df["hash"].to_list()
+
     # def mask_separator(self, data: bytes) -> bytes:
     #     """
     #     Mask separator symbol by replacing it by 2 new bytes A,B.
