@@ -1,11 +1,14 @@
-from typing import Callable, List, Dict
+from typing import Callable, List, Dict, Tuple
 import polars as pl
+import logging
 import hashlib
 from reedsolo import RSCodec, ReedSolomonError
 import hmac
+from struct import unpack
 import io
 import copy
 import random
+import binascii
 from steganodf.algorithms.algorithm import AlgorithmError
 from steganodf.algorithms.permutation_algorithm import PermutationAlgorithm
 from steganodf import lt
@@ -30,16 +33,11 @@ class BitPool(PermutationAlgorithm):
         self._password = password
         self._bit_per_row = bit_per_row
 
-        self._block_size = 20
-        self._corr_size = 30
-        self._LT_HEADER_SIZE = 12
-        self._separator = b"\xFF"
-
-        self._separator_mask = b"\xF1"
-        self._separator_replacement = {
-            self._separator: self._separator_mask + b"\xF2",
-            self._separator_mask: self._separator_mask + b"\xF3",
-        }
+        self._data_size = 10
+        self._corr_size = 1
+        # cannot be change.. Value from lt-decode
+        self._header_size = 12
+        self._crc_size = 4
 
         if self._bit_per_row not in (1, 2, 4):
             raise AlgorithmError("bit_per_row must be 1,2 or 4")
@@ -73,11 +71,11 @@ class BitPool(PermutationAlgorithm):
         digest = digest >> (8 - self._bit_per_row)
         return digest
 
-    def get_block_size(self) -> int:
+    def get_packet_size(self) -> int:
         """
-        Return size of a complete block
+        Return size of of complete paquet
         """
-        return self._block_size + self._corr_size + self._LT_HEADER_SIZE + len(self._separator)
+        return self._header_size + self._data_size + self._corr_size + self._crc_size
 
     def get_separator_values(self) -> List[int]:
         """
@@ -135,45 +133,44 @@ class BitPool(PermutationAlgorithm):
 
         return results
 
-    def mask_separator(self, data: bytes) -> bytes:
-        """
-        Mask separator symbol by replacing it by 2 new bytes A,B.
-        A must also be replace by A and C.
+    # def mask_separator(self, data: bytes) -> bytes:
+    #     """
+    #     Mask separator symbol by replacing it by 2 new bytes A,B.
+    #     A must also be replace by A and C.
 
-        Args:
-            data(bytes) : Unmask bytes sequence
+    #     Args:
+    #         data(bytes) : Unmask bytes sequence
 
-        Returns:
-            A byte sequence without separator symbol
+    #     Returns:
+    #         A byte sequence without separator symbol
 
+    #     """
 
-        """
+    #     m = self._separator_replacement
 
-        m = self._separator_replacement
+    #     mask_data = data.replace(self._separator_mask, m[self._separator_mask])
+    #     mask_data = mask_data.replace(self._separator, m[self._separator])
 
-        mask_data = data.replace(self._separator_mask, m[self._separator_mask])
-        mask_data = mask_data.replace(self._separator, m[self._separator])
+    #     return mask_data
 
-        return mask_data
+    # def unmask_separator(self, data: bytes) -> bytes:
+    #     """
+    #     Unmask separator symbol by replacing the two replacement bytes by the separator
 
-    def unmask_separator(self, data: bytes) -> bytes:
-        """
-        Unmask separator symbol by replacing the two replacement bytes by the separator
+    #     Args:
+    #         data(bytes) : Mask bytes sequence
 
-        Args:
-            data(bytes) : Mask bytes sequence
+    #     Returns:
+    #         A byte sequence with separator symbol
 
-        Returns:
-            A byte sequence with separator symbol
+    #     """
 
-        """
+    #     m = self._separator_replacement
 
-        m = self._separator_replacement
+    #     mask_data = data.replace(m[self._separator], self._separator)
+    #     mask_data = mask_data.replace(m[self._separator_mask], self._separator_mask)
 
-        mask_data = data.replace(m[self._separator], self._separator)
-        mask_data = mask_data.replace(m[self._separator_mask], self._separator_mask)
-
-        return mask_data
+    #     return mask_data
 
     def compute_hash(self, df: pl.DataFrame) -> pl.DataFrame:
         """
@@ -239,43 +236,57 @@ class BitPool(PermutationAlgorithm):
         random.shuffle(indexes)
         return indexes
 
-    def encode(self, df: pl.DataFrame, payload: bytes) -> pl.DataFrame:
+    def line_count(self, data: bytes) -> int:
+        """
+        Return line count required for N bytes
+        """
+
+        return len(data) * 8 // self._bit_per_row
+
+    def _encode(self, df: pl.DataFrame, payload: bytes) -> Tuple[pl.DataFrame, int]:
         """
         Override method
 
         Encode a payload in dataframe by permutation
         """
 
-        new_df = self.compute_hash(df)
-        # payload = self.mask_separator(payload)
-        pool = self.create_pool(new_df["hash"].to_list())
+        if len(payload) < self._data_size:
+            logging.info("payload size is smaller than data_size. You will lost capacity")
 
+        new_df = self.compute_hash(df)
+        pool = self.create_pool(new_df["hash"].to_list())
         indexes = []
         rsc = RSCodec(self._corr_size)
         data = io.BytesIO(payload)
-        t = []
-        for block in lt.encode.encoder(data, self._block_size):
+        block_count = 0
+        for i, block in enumerate(lt.encode.encoder(data, self._data_size)):
 
             # Add reed solomon error corection code
+            crc = binascii.crc32(block)
+            block += crc.to_bytes(self._crc_size)
+
+            if i == 0:
+                pass
+
             block = rsc.encode(block)
-            # Add seperator
-            block += self._separator
+
             # consume block until not enough bits
             try:
                 backup_pool = copy.deepcopy(pool)
                 bloc_indexes = self.encode_chunk(block, pool)
-                t.append(block)
                 indexes += bloc_indexes
-
+                block_count += 1
             except NotEnoughBitException:
                 pool = backup_pool
                 break
 
+        # print("packet crée", block_count)
+        # print(self.len(new_df), len(indexes))
         remains = self.get_remaining_indexes(pool)
         indexes += remains
-        return df[indexes]
+        return df[indexes], block_count
 
-    def decode(self, df: pl.DataFrame) -> bytes:
+    def _decode(self, df: pl.DataFrame) -> bytes:
         """
         Override method
 
@@ -290,37 +301,52 @@ class BitPool(PermutationAlgorithm):
         rsc = RSCodec(self._corr_size)
         decoder = lt.decode.LtDecoder()
 
-        window = self.get_packet_size() * 8 // self._bit_per_row
+        window = (self.get_packet_size()) * 8 // self._bit_per_row
         success = False
-        valid_blocs = []
-
-        for i in range(0, len(hash)):
-
+        valid_blocks = []
+        count = 0
+        for i in range(0, len(hash) - window):
             chunk = hash[i : i + window]
-            bloc = self.decode_chunk(chunk)
-            if len(bloc) == self.get_block_size():
-                # Remove separator
-                bloc = bloc[:-1]
-                check = rsc.check(bloc)
-                if check[0]:
-                    bloc = rsc.decode(bloc)[0]
-                    valid_blocs.append(bloc)
-                    data = io.BytesIO(bloc)
-                    header = lt.decode._read_header(data)
-                    block = lt.decode._read_block(header[1], data)
+            block = self.decode_chunk(chunk)
+            check = rsc.check(block)
+            if check[0]:
+
+                block = rsc.decode(block)[0]
+                data = block[: -self._crc_size]
+                crc = int.from_bytes(block[-self._crc_size :])
+                comp_crc = binascii.crc32(data)
+
+                if comp_crc == crc:
+                    count += 1
+
+                    valid_blocks.append(data)
+                    stream = io.BytesIO(data)
+                    header = lt.decode._read_header(stream)
+                    block = lt.decode._read_block(header[1], stream)
                     decoder.consume_block((header, block))
 
                     if decoder.is_done():
                         success = True
                         break
 
-        if success:
+        print(f"{count} consuming packet")
+
+        if count == 0:
+            payload = b""
+        else:
             payload = decoder.bytes_dump()
 
-        else:
-            payload = b"error" + b"".join(valid_blocs)
+        return {"payload": payload, "success": success}
 
-        return payload
+    def encode(self, df: pl.DataFrame, payload: bytes) -> pl.DataFrame:
+        """override from parent"""
+        df, _ = self._encode(df, payload)
+        return df
+
+    def decode(self, df: pl.DataFrame) -> bytes:
+        """override from parent"""
+        result = self._decode(df)
+        return result["payload"]
 
     def encode_chunk(self, chunk: bytes, pool: Dict[int, List[int]]) -> List[int]:
         """
