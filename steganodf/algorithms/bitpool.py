@@ -23,6 +23,8 @@ class BitPool(PermutationAlgorithm):
     def __init__(
         self,
         bit_per_row: int = 2,
+        block_size: int = 10,
+        parity_size: int = 10,
         hash_function: Callable = hashlib.md5,
         password: str = None,
         **kwargs,
@@ -33,8 +35,8 @@ class BitPool(PermutationAlgorithm):
         self._password = password
         self._bit_per_row = bit_per_row
 
-        self._data_size = 10
-        self._corr_size = 1
+        self._data_size = block_size
+        self._corr_size = parity_size
         # cannot be change.. Value from lt-decode
         self._header_size = 12
         self._crc_size = 4
