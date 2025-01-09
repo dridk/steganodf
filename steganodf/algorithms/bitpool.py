@@ -1,7 +1,9 @@
 from typing import Callable, List, Dict, Tuple
 import polars as pl
+import string
 import logging
 import hashlib
+import statistics
 from reedsolo import RSCodec, ReedSolomonError
 import hmac
 from struct import unpack
@@ -13,6 +15,11 @@ from steganodf.algorithms.algorithm import AlgorithmError
 from steganodf.algorithms.permutation_algorithm import PermutationAlgorithm
 from steganodf import lt
 
+# +--------------+--------------------+------+----------+
+# |   HEADER     |      DATA BLOCK    | CRC  | PARITY   |
+# |   12 bytes   |      20 bytes      | 4 b  | 10 bytes |
+# +--------------+--------------------+------+----------+
+
 
 class NotEnoughBitException(Exception):
     pass
@@ -23,7 +30,7 @@ class BitPool(PermutationAlgorithm):
     def __init__(
         self,
         bit_per_row: int = 2,
-        block_size: int = 10,
+        block_size: int = 20,
         parity_size: int = 10,
         hash_function: Callable = hashlib.md5,
         password: str = None,
@@ -35,10 +42,11 @@ class BitPool(PermutationAlgorithm):
         self._password = password
         self._bit_per_row = bit_per_row
 
-        self._data_size = block_size
-        self._corr_size = parity_size
+        self._block_size = block_size
+        self._parity_size = parity_size
         # cannot be change.. Value from lt-decode
         self._header_size = 12
+        # cannot be change .. Value from CRC32
         self._crc_size = 4
 
         if self._bit_per_row not in (1, 2, 4):
@@ -75,109 +83,16 @@ class BitPool(PermutationAlgorithm):
 
     def get_packet_size(self) -> int:
         """
-        Return size of of complete paquet
+        Return size of complete packet
         """
-        return self._header_size + self._data_size + self._corr_size + self._crc_size
-
-    def get_separator_values(self) -> List[int]:
-        """
-        Return separator as it is displayed in dataframe hash column
-
-        Examples:
-
-            if seperator = 0xFF and bit_per_row = 4
-            Then separator = 1111 1111 = [16,16]
-
-            >>> a = BitPool(bit_per_row = 4)
-            >>> a.get_separator_values()
-            [15, 15]
-
-            >>> a = BitPool(bit_per_row = 2)
-            >>> a.get_separator_values()
-            [3, 3, 3, 3]
-
-            >>> a = BitPool(bit_per_row = 1)
-            >>> a.get_separator_values()
-            [1, 1, 1, 1, 1, 1, 1, 1]
-        """
-        result = [2 ** (self._bit_per_row) - 1] * (8 // self._bit_per_row)
-
-        return result
-
-    def split_by_separator(self, hash: List[int], separator: List[int]) -> List[int]:
-        """
-        Split a list by a sub list separator
-
-        >>> hash = [1,2,3,4,1,1,1,4,5,5,1,1,1,1,4,2]
-        >>> a = BitPool()
-        >>> a.split_by_separator(hash, [1,1,1])
-        [[1, 2, 3, 4], [4, 5, 5], [1, 4, 2]]
-        """
-
-        window = len(separator)
-        i = 0
-        results = []
-        temp = []
-
-        while i < len(hash):
-            if hash[i : i + window] == separator:
-                if temp:
-                    results.append(temp)
-                    temp = []
-                i += window
-
-            else:
-                temp.append(hash[i])
-                i += 1
-
-        if temp:
-            results.append(temp)
-
-        return results
+        return self._header_size + self._block_size + self._crc_size + self._parity_size
 
     def find_packet(self, df: pl.DataFrame, max_window=100) -> Tuple[int, int, int]:
-
+        """
+        TODO
+        """
         new_df = self.compute_hash(df)
         hash = new_df["hash"].to_list()
-
-    # def mask_separator(self, data: bytes) -> bytes:
-    #     """
-    #     Mask separator symbol by replacing it by 2 new bytes A,B.
-    #     A must also be replace by A and C.
-
-    #     Args:
-    #         data(bytes) : Unmask bytes sequence
-
-    #     Returns:
-    #         A byte sequence without separator symbol
-
-    #     """
-
-    #     m = self._separator_replacement
-
-    #     mask_data = data.replace(self._separator_mask, m[self._separator_mask])
-    #     mask_data = mask_data.replace(self._separator, m[self._separator])
-
-    #     return mask_data
-
-    # def unmask_separator(self, data: bytes) -> bytes:
-    #     """
-    #     Unmask separator symbol by replacing the two replacement bytes by the separator
-
-    #     Args:
-    #         data(bytes) : Mask bytes sequence
-
-    #     Returns:
-    #         A byte sequence with separator symbol
-
-    #     """
-
-    #     m = self._separator_replacement
-
-    #     mask_data = data.replace(m[self._separator], self._separator)
-    #     mask_data = mask_data.replace(m[self._separator_mask], self._separator_mask)
-
-    #     return mask_data
 
     def compute_hash(self, df: pl.DataFrame) -> pl.DataFrame:
         """
@@ -243,7 +158,7 @@ class BitPool(PermutationAlgorithm):
         random.shuffle(indexes)
         return indexes
 
-    def line_count(self, data: bytes) -> int:
+    def bytes_to_rows_count(self, data: bytes) -> int:
         """
         Return line count required for N bytes
         """
@@ -257,24 +172,25 @@ class BitPool(PermutationAlgorithm):
         Encode a payload in dataframe by permutation
         """
 
-        if len(payload) < self._data_size:
+        if len(payload) < self._block_size:
             logging.info("payload size is smaller than data_size. You will lost capacity")
 
         new_df = self.compute_hash(df)
         pool = self.create_pool(new_df["hash"].to_list())
         indexes = []
-        rsc = RSCodec(self._corr_size)
+        rsc = RSCodec(self._parity_size)
         data = io.BytesIO(payload)
         block_count = 0
-        for i, block in enumerate(lt.encode.encoder(data, self._data_size)):
+        for i, block in enumerate(lt.encode.encoder(data, self._block_size)):
 
-            # Add reed solomon error corection code
+            # Add CRC code
             crc = binascii.crc32(block)
             block += crc.to_bytes(self._crc_size)
 
             if i == 0:
                 pass
 
+            # Add reed solomon error corection code
             block = rsc.encode(block)
 
             # consume block until not enough bits
@@ -305,7 +221,7 @@ class BitPool(PermutationAlgorithm):
         new_df = self.compute_hash(df)
         hash = new_df["hash"].to_list()
 
-        rsc = RSCodec(self._corr_size)
+        rsc = RSCodec(self._parity_size)
         decoder = lt.decode.LtDecoder()
 
         window = (self.get_packet_size()) * 8 // self._bit_per_row
@@ -336,7 +252,7 @@ class BitPool(PermutationAlgorithm):
                         success = True
                         break
 
-        print(f"{count} consuming packet")
+        # print(f"{count} consuming packet")
 
         if count == 0:
             payload = b""
@@ -402,3 +318,68 @@ class BitPool(PermutationAlgorithm):
             data.append(byte)
 
         return data
+
+    def get_data_size_available(self, df: pl.DataFrame) -> int:
+        """
+        Return data part available in bytes
+        """
+
+        total = self.get_total_size_available(df)
+        packet_count = total // self.get_packet_size()
+        return packet_count * self._block_size
+
+    def get_total_size_available(self, df: pl.DataFrame) -> int:
+        """
+        Return all bytes available
+
+        """
+        new_df = self.compute_hash(df)
+        count = len(new_df)
+
+        return count * self._bit_per_row // 8
+
+    def get_packet_count(self, payload: str) -> int:
+        """
+        Return how many packet are required for a payload
+        """
+
+        total = len(payload) // self._block_size
+        if total <= 0:
+            return 1
+        else:
+            return int(total)
+
+    def get_payload_size(self, payload: str) -> int:
+        """
+        Return bytes required for the payload
+        """
+
+        count = self.get_packet_count(payload)
+
+        return count * self.get_packet_size()
+
+    def estimate_max_payload(self, df: pl.DataFrame) -> int:
+        """
+        Estimate max payload size
+        """
+
+        max_size = []
+        retry = 5
+
+        for i in range(retry):
+            mmax = 0
+            for n in range(1, 200):
+
+                payload = "".join([random.choice(string.ascii_letters) for _ in range(n)])
+                payload = payload.encode()
+
+                encoded_df = self.encode(df, payload)
+
+                if self.decode(encoded_df) == payload:
+                    mmax = n
+
+                else:
+                    max_size.append(mmax)
+                    break
+
+        return statistics.median(max_size)
