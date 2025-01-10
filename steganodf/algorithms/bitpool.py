@@ -219,6 +219,11 @@ class BitPool(PermutationAlgorithm):
 
         # read hash rows
         new_df = self.compute_hash(df)
+
+        # concat with reverse orientation
+        # This is same than reading a second time the dataframe from bottom to up
+        new_df = pl.concat([new_df, new_df.reverse()])
+
         hash = new_df["hash"].to_list()
 
         rsc = RSCodec(self._parity_size)
