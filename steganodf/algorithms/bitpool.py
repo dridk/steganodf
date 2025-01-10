@@ -85,7 +85,7 @@ class BitPool(PermutationAlgorithm):
         """
         Return size of complete packet
         """
-        return self._header_size + self._block_size + self._crc_size + self._parity_size
+        return self._header_size + self._block_size +  self._parity_size
 
     def find_packet(self, df: pl.DataFrame, max_window=100) -> Tuple[int, int, int]:
         """
@@ -181,11 +181,12 @@ class BitPool(PermutationAlgorithm):
         rsc = RSCodec(self._parity_size)
         data = io.BytesIO(payload)
         block_count = 0
+        valid_blocks = []
         for i, block in enumerate(lt.encode.encoder(data, self._block_size)):
 
             # Add CRC code
-            crc = binascii.crc32(block)
-            block += crc.to_bytes(self._crc_size)
+            # crc = binascii.crc32(block)
+            # block += crc.to_bytes(self._crc_size)
 
             if i == 0:
                 pass
@@ -199,12 +200,16 @@ class BitPool(PermutationAlgorithm):
                 bloc_indexes = self.encode_chunk(block, pool)
                 indexes += bloc_indexes
                 block_count += 1
+                valid_blocks.append(block)
             except NotEnoughBitException:
                 pool = backup_pool
                 break
 
         # print("packet crée", block_count)
         # print(self.len(new_df), len(indexes))
+        print("decode")
+        # for v in valid_blocks:
+        #     print(v)
         remains = self.get_remaining_indexes(pool)
         indexes += remains
         return df[indexes], block_count
@@ -216,7 +221,6 @@ class BitPool(PermutationAlgorithm):
         Decode a payload in dataframe by permutation
 
         """
-
         # read hash rows
         new_df = self.compute_hash(df)
 
@@ -239,16 +243,17 @@ class BitPool(PermutationAlgorithm):
             check = rsc.check(block)
             if check[0]:
 
-                block = rsc.decode(block)[0]
-                data = block[: -self._crc_size]
-                crc = int.from_bytes(block[-self._crc_size :])
-                comp_crc = binascii.crc32(data)
+                packet = rsc.decode(block)[0]
+                header = packet[:12]
+                data= packet[12:]
+                # Check header 
+                block_count, data_size, uuid = unpack("!III",header)
 
-                if comp_crc == crc:
+                if data_size == len(data):
+                
+                    valid_blocks.append(packet)
                     count += 1
-
-                    valid_blocks.append(data)
-                    stream = io.BytesIO(data)
+                    stream = io.BytesIO(packet)
                     header = lt.decode._read_header(stream)
                     block = lt.decode._read_block(header[1], stream)
                     decoder.consume_block((header, block))
