@@ -242,12 +242,8 @@ class BitPool(PermutationAlgorithm):
             block = self.decode_chunk(chunk)
             check = rsc.check(block)
             if check[0]:
-                # If no parity, ignore decode
-                if self._parity_size > 0:
-                    packet = rsc.decode(block)[0]
-                else:
-                    packet = block
 
+                packet = rsc.decode(block)[0]
                 header = packet[:12]
                 data= packet[12:]
                 # Check header 
