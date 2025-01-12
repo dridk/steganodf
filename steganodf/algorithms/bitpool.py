@@ -188,12 +188,12 @@ class BitPool(PermutationAlgorithm):
             # crc = binascii.crc32(block)
             # block += crc.to_bytes(self._crc_size)
 
-            if i == 0:
-                pass
 
             # Add reed solomon error corection code
             block = rsc.encode(block)
 
+            if i == 0:
+                print(block)
             # consume block until not enough bits
             try:
                 backup_pool = copy.deepcopy(pool)
@@ -240,27 +240,30 @@ class BitPool(PermutationAlgorithm):
         for i in range(0, len(hash) - window):
             chunk = hash[i : i + window]
             block = self.decode_chunk(chunk)
-            check = rsc.check(block)
-            if check[0]:
 
+            try:
                 packet = rsc.decode(block)[0]
-                header = packet[:12]
-                data= packet[12:]
-                # Check header 
-                block_count, data_size, uuid = unpack("!III",header)
-
-                if data_size == len(data):
+            except:
+                continue
                 
-                    valid_blocks.append(packet)
-                    count += 1
-                    stream = io.BytesIO(packet)
-                    header = lt.decode._read_header(stream)
-                    block = lt.decode._read_block(header[1], stream)
-                    decoder.consume_block((header, block))
+            header = packet[:12]
+            data= packet[12:]
+            # Check header 
+            block_count, data_size, uuid = unpack("!III",header)
 
-                    if decoder.is_done():
-                        success = True
-                        break
+            if data_size == len(data):
+
+                print("success", i)
+                valid_blocks.append(packet)
+                count += 1
+                stream = io.BytesIO(packet)
+                header = lt.decode._read_header(stream)
+                block = lt.decode._read_block(header[1], stream)
+                decoder.consume_block((header, block))
+
+                if decoder.is_done():
+                    success = True
+                    break
 
         # print(f"{count} consuming packet")
 
