@@ -240,32 +240,33 @@ class BitPool(PermutationAlgorithm):
         for i in range(0, len(hash) - window):
             chunk = hash[i : i + window]
             block = self.decode_chunk(chunk)
-            check = rsc.check(block)
-            if check[0]:
-                # If no parity, ignore decode
-                if self._parity_size > 0:
+
+            if self._parity_size > 0:
+                check = rsc.check(block)
+                if check[0]:
                     packet = rsc.decode(block)[0]
                 else:
-                    packet = block
+                    continue
+            else:
+                packet = block
+                    
+            header = packet[:12]
+            data= packet[12:]
+            # Check header 
+            block_count, data_size, uuid = unpack("!III",header)
 
-                header = packet[:12]
-                data= packet[12:]
-                # Check header 
-                block_count, data_size, uuid = unpack("!III",header)
+            if data_size == len(data):
+        
+                valid_blocks.append(packet)
+                count += 1
+                stream = io.BytesIO(packet)
+                header = lt.decode._read_header(stream)
+                block = lt.decode._read_block(header[1], stream)
+                decoder.consume_block((header, block))
 
-                if data_size == len(data):
-                
-                    valid_blocks.append(packet)
-                    count += 1
-                    stream = io.BytesIO(packet)
-                    header = lt.decode._read_header(stream)
-                    block = lt.decode._read_block(header[1], stream)
-                    decoder.consume_block((header, block))
-
-                    if decoder.is_done():
-                        success = True
-                        break
-
+                if decoder.is_done():
+                    success = True
+                    break
         # print(f"{count} consuming packet")
 
         if count == 0:
