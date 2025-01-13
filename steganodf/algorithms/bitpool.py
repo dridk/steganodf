@@ -89,7 +89,7 @@ class BitPool(PermutationAlgorithm):
         """
         Return size of complete packet
         """
-        return self._header_size + self._block_size + self._parity_size
+        return self._header_size + self._block_size + self._crc_size + self._parity_size
 
     def find_packet(self, df: pl.DataFrame, max_window=100) -> Tuple[int, int, int]:
         """
@@ -189,12 +189,13 @@ class BitPool(PermutationAlgorithm):
         for i, block in enumerate(lt.encode.encoder(data, self._block_size)):
 
             # Add CRC code
-            # crc = binascii.crc32(block)
-            # block += crc.to_bytes(self._crc_size)
+            crc = binascii.crc32(block).to_bytes(self._crc_size)
+            block += crc
 
             # Add reed solomon error corection code
             block = rsc.encode(block)
 
+            # print(block)
             # if i == 0:
             #     print(block)
             # consume block until not enough bits
@@ -213,6 +214,7 @@ class BitPool(PermutationAlgorithm):
 
         # for v in valid_blocks:
         #     print(v)
+
         remains = self.get_remaining_indexes(pool)
         indexes += remains
         return df[indexes], block_count
@@ -251,12 +253,15 @@ class BitPool(PermutationAlgorithm):
                 continue
 
             header = packet[:12]
-            data = packet[12:]
+            data = packet[12:-4]
             # Check header
+
+            crc = packet[-4:]
+            read_crc = binascii.crc32(packet[:-4]).to_bytes(self._crc_size)
+
             block_count, data_size, uuid = unpack("!III", header)
 
-            if data_size == len(data):
-
+            if data_size == len(data) and crc == read_crc:
                 valid_blocks.append(packet)
                 count += 1
                 stream = io.BytesIO(packet)
@@ -267,8 +272,6 @@ class BitPool(PermutationAlgorithm):
                 if decoder.is_done():
                     success = True
                     break
-
-        # print(f"{count} consuming packet")
 
         if count == 0:
             payload = b""
