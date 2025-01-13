@@ -34,6 +34,7 @@ class BitPool(PermutationAlgorithm):
         parity_size: int = 10,
         hash_function: Callable = hashlib.md5,
         password: str = None,
+        reverse_reading: bool = False,
         **kwargs,
     ):
         super().__init__(**kwargs)
@@ -48,6 +49,9 @@ class BitPool(PermutationAlgorithm):
         self._header_size = 12
         # cannot be change .. Value from CRC32
         self._crc_size = 4
+
+        # Read also in reverse
+        self._reverse_reading = reverse_reading
 
         if self._bit_per_row not in (1, 2, 4):
             raise AlgorithmError("bit_per_row must be 1,2 or 4")
@@ -225,7 +229,8 @@ class BitPool(PermutationAlgorithm):
 
         # concat with reverse orientation
         # This is same than reading a second time the dataframe from bottom to up
-        new_df = pl.concat([new_df, new_df.reverse()])
+        if self._reverse_reading:
+            new_df = pl.concat([new_df, new_df.reverse()])
 
         hash = new_df["hash"].to_list()
 
@@ -270,7 +275,7 @@ class BitPool(PermutationAlgorithm):
         else:
             payload = decoder.bytes_dump()
 
-        return {"payload": payload, "success": success}
+        return {"payload": payload, "success": success, "block_count": len(valid_blocks)}
 
     def encode(self, df: pl.DataFrame, payload: bytes) -> pl.DataFrame:
         """override from parent"""
