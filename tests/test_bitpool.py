@@ -1,14 +1,32 @@
 import pytest
+import string
 import random
 import pandas as pd
 import polars as pl
+import random
 from steganodf.algorithms.bitpool import BitPool
+
+
+def generate_payload(n: int):
+    """
+    Generate a random payload of size n
+    """
+    return "".join(random.choice(string.ascii_letters) for _ in range(n))
+
+
+def test_stat(df):
+
+    a = BitPool(bit_per_row=2)
+
+    assert a.get_packet_size() > 0
+    assert a.get_total_size_available(df) > 0
+    assert a.get_data_size_available(df) > 0
 
 
 def test_small(df):
     payload = b"h"
     algorithm = BitPool(bit_per_row=2)
-    algorithm._corr_size = 1
+    algorithm._parity_size = 1
     algorithm._data_size = 2
     df_encoded, count = algorithm._encode(df.head(200), payload=payload)
 

@@ -85,7 +85,7 @@ class BitPool(PermutationAlgorithm):
         """
         Return size of complete packet
         """
-        return self._header_size + self._block_size +  self._parity_size
+        return self._header_size + self._block_size + self._parity_size
 
     def find_packet(self, df: pl.DataFrame, max_window=100) -> Tuple[int, int, int]:
         """
@@ -188,12 +188,11 @@ class BitPool(PermutationAlgorithm):
             # crc = binascii.crc32(block)
             # block += crc.to_bytes(self._crc_size)
 
-
             # Add reed solomon error corection code
             block = rsc.encode(block)
 
-            if i == 0:
-                print(block)
+            # if i == 0:
+            #     print(block)
             # consume block until not enough bits
             try:
                 backup_pool = copy.deepcopy(pool)
@@ -207,7 +206,7 @@ class BitPool(PermutationAlgorithm):
 
         # print("packet crée", block_count)
         # print(self.len(new_df), len(indexes))
-        print("decode")
+
         # for v in valid_blocks:
         #     print(v)
         remains = self.get_remaining_indexes(pool)
@@ -245,15 +244,14 @@ class BitPool(PermutationAlgorithm):
                 packet = rsc.decode(block)[0]
             except:
                 continue
-                
+
             header = packet[:12]
-            data= packet[12:]
-            # Check header 
-            block_count, data_size, uuid = unpack("!III",header)
+            data = packet[12:]
+            # Check header
+            block_count, data_size, uuid = unpack("!III", header)
 
             if data_size == len(data):
 
-                print("success", i)
                 valid_blocks.append(packet)
                 count += 1
                 stream = io.BytesIO(packet)
@@ -370,29 +368,3 @@ class BitPool(PermutationAlgorithm):
         count = self.get_packet_count(payload)
 
         return count * self.get_packet_size()
-
-    def estimate_max_payload(self, df: pl.DataFrame) -> int:
-        """
-        Estimate max payload size
-        """
-
-        max_size = []
-        retry = 5
-
-        for i in range(retry):
-            mmax = 0
-            for n in range(1, 200):
-
-                payload = "".join([random.choice(string.ascii_letters) for _ in range(n)])
-                payload = payload.encode()
-
-                encoded_df = self.encode(df, payload)
-
-                if self.decode(encoded_df) == payload:
-                    mmax = n
-
-                else:
-                    max_size.append(mmax)
-                    break
-
-        return statistics.median(max_size)
