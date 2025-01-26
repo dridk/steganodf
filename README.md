@@ -8,7 +8,7 @@ to modification thanks to a Reed-Solomon code and a Luby-s LT fontain code.
 
 # Online demo 
 
-Steganodf is available as a static web page thanks to webAssemby.
+Steganodf is available as a static web page thanks to webAssemby.     
 [https://dridk.github.io/steganodf/](https://dridk.github.io/steganodf/)
 
 # Installation 
