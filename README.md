@@ -6,6 +6,10 @@ A steganography tool for hiding a message in a dataset, such as CSV file.
 This tool hides a payload by permuting the rows of the dataset. The is tolerant
 to modification thanks to a Reed-Solomon code and a Luby-s LT fontain code.
 
+# Online demo 
+
+Steganodf is available as a static web page thanks to webAssemby.
+[https://dridk.github.io/steganodf/](https://dridk.github.io/steganodf/)
 
 # Installation 
 
