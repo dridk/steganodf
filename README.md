@@ -1,7 +1,11 @@
 
 # Steganodf 
 
-A python package for steganography on tabulated data like CSV files.  
+A steganography tool for hiding a message in a dataset, such as CSV file.
+
+This tool hides a payload by permuting the rows of the dataset. The is tolerant
+to modification thanks to a Reed-Solomon code and a Luby-s LT fontain code.
+
 
 # Installation 
 
@@ -14,8 +18,8 @@ pip install steganodf
 ## From command line 
 ```bash 
 
-steganodf encode -i iris.csv -o iris.w.csv -m hello -p password -a bitpool
-steganodf decode -i iris.w.csv -p password -a bitpool
+steganodf encode -i iris.csv -o iris.w.csv -m hello -p password
+steganodf decode -i iris.w.csv -p password
 
 ```
 
@@ -27,7 +31,7 @@ import polars as pl
  
 df = pl.read_csv("https://gist.githubusercontent.com/netj/8836201/raw/6f9306ad21398ea43cba4f7d537619d0e07d5ae3/iris.csv")
 
-new_df = steganodf.encode(df, "made by steganodf", password="secret", algorithm="bitpool")
+new_df = steganodf.encode(df, "made by steganodf", password="secret")
 
 # Extract your message 
 message = steganodf.decode(df, password="secret")
@@ -35,19 +39,5 @@ message = steganodf.decode(df, password="secret")
 ```
 
 
-## Algorithms 
 
 
-### Permutation Methods 
-The payload is hidden in the line permutation. There is no data modification.
-
-- BitPool 
-an algorithm that assigns a bit to each line with Reed Solomon error correction
-
-- BitBlock 
-an algorithm that permutes each block of 6 lines to encode a byte.
-
-### Alteration methods 
-The payload is hidden by minimally alternating the data.
-
-In progress
