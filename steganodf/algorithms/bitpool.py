@@ -193,7 +193,8 @@ class BitPool(PermutationAlgorithm):
             block += crc
 
             # Add reed solomon error corection code
-            block = rsc.encode(block)
+            if self._parity_size > 0:
+                block = rsc.encode(block)
 
             # print(block)
             # if i == 0:
@@ -248,8 +249,11 @@ class BitPool(PermutationAlgorithm):
             block = self.decode_chunk(chunk)
 
             try:
-                packet = rsc.decode(block)[0]
-            except:
+                if self._parity_size > 0:
+                    packet = rsc.decode(block)[0]
+                else:
+                    packet = block
+            except Exception:
                 continue
 
             header = packet[:12]

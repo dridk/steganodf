@@ -37,15 +37,13 @@ def test_small(df):
     # check error
 
     pdf = df_encoded.to_pandas()
+def test_without_parity(df: pl.DataFrame):
 
-    # for i in range(300):
-    #     pdf.iloc[i, 0] = 100
-
-    print(pdf)
-
-    result = algorithm._decode(pl.from_pandas(pdf))
-
-    print(result)
+    payload = b"hello"
+    algorithm = BitPool(parity_size=0)
+    df_encoded = algorithm.encode(df, payload=payload)
+    decoded_payload = algorithm.decode(df_encoded)
+    assert decoded_payload == payload
 
 
 def test_without_password(df: pl.DataFrame):
