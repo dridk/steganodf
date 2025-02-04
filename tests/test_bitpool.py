@@ -23,16 +23,16 @@ def test_stat(df):
 
 def test_estimate_payload_size(df: pl.DataFrame):
 
-    for limit in range(1000, len(df), 1000):
-        sdf = df.head(limit)
-        algorithm = BitPool(parity_size=0)
-        size = algorithm.get_estimate_payload(sdf)
-        payload = [string.ascii_letters[i % len(string.ascii_letters)] for i in range(size)]
-        payload = "".join(payload).encode()
+    sdf = df
+    algorithm = BitPool(parity_size=0)
+    size = algorithm.get_max_valid_payload_size(sdf)
+    print("size", size)
+    payload = [string.ascii_letters[i % len(string.ascii_letters)] for i in range(size)]
+    payload = "".join(payload).encode()
 
-        df_encoded = algorithm.encode(sdf, payload)
-        decoded_payload = algorithm.decode(df_encoded)
-        assert decoded_payload == payload
+    df_encoded = algorithm.encode(sdf, payload)
+    decoded_payload = algorithm.decode(df_encoded)
+    assert decoded_payload == payload
 
 
 def test_without_parity(df: pl.DataFrame):

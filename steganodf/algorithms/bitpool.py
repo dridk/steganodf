@@ -91,15 +91,20 @@ class BitPool(PermutationAlgorithm):
         """
         return self._header_size + self._block_size + self._crc_size + self._parity_size
 
-    def get_estimate_payload(self, df: pl.DataFrame) -> int:
+    def get_max_theoretical_payload_size(self, df: pl.DataFrame):
         """
         Return the maximum payload size.
-        This is theorically
+        This is theorically if all bit from the pool are consume by the payload
         """
+        max_size = (self.get_total_size_available(df) * self._block_size) / (self.get_packet_size())
+        return max_size
 
-        n = len(df)
-        max_size = (n * self._block_size / 8) / (self._block_size + 16)
-        estimate_size = int(max_size // 3)
+    def get_max_valid_payload_size(self, df: pl.DataFrame) -> int:
+        """
+        Return a valid max payload size
+        """
+        max_size = self.get_max_theoretical_payload_size(df)
+        estimate_size = int(max_size // 4)
         return estimate_size
 
     def find_packet(self, df: pl.DataFrame, max_window=100) -> Tuple[int, int, int]:
