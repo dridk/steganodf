@@ -25,7 +25,7 @@ def test_estimate_payload_size(df: pl.DataFrame):
 
     sdf = df
     algorithm = BitPool(parity_size=0)
-    size = algorithm.get_max_valid_payload_size(sdf)
+    size = algorithm.get_max_payload_size(sdf)
     print("size", size)
     payload = [string.ascii_letters[i % len(string.ascii_letters)] for i in range(size)]
     payload = "".join(payload).encode()
