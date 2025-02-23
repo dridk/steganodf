@@ -4,6 +4,5 @@ venv/
 dist/
 notebooks/
 www/
-*.ipynb
 *.parquet
 *.csv
