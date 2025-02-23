@@ -1,7 +1,7 @@
 
 # Steganodf 
 
-A steganography tool for hiding a message in a dataset, such as CSV file.
+A steganography tool for hiding a message in a dataset, such as CSV or parquet file..
 
 This tool hides a payload by permuting the rows of the dataset. The is tolerant
 to modification thanks to a Reed-Solomon code and a Luby-s LT fontain code.
