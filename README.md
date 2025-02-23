@@ -5,10 +5,10 @@
 [![PyPi Python Versions](https://img.shields.io/pypi/pyversions/yt2mp3.svg)](https://pypi.python.org/pypi/steganodf/)
 
 
-A steganography tool for hiding a message in a dataset, such as CSV file.
+A steganography tool for hiding a message in a dataset, such as csv or parquet files.
 
 This tool hides a payload by permuting the rows of the dataset. The is tolerant
-to modification thanks to a Reed-Solomon code and a Luby-s LT fontain code.
+to modification thanks to a [Reed-Solomon code](https://en.wikipedia.org/wiki/Reed%E2%80%93Solomon_error_correction) and a [Luby-s LT fontain code](https://en.wikipedia.org/wiki/Luby_transform_code).
 
 # Online demo 
 
