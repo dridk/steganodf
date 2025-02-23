@@ -22,8 +22,14 @@ pip install steganodf
 ## From command line 
 ```bash 
 
-steganodf encode -i iris.csv -o iris.w.csv -m hello -p password
-steganodf decode -i iris.w.csv -p password
+# Encoding 
+steganodf encode -m hello host.csv stegano.csv
+steganodf encode -m hello host.parquet stegano.parquet 
+steganodf encode -m hello -p password host.parquet stegano.parquet 
+
+# Decoding 
+steganodf decode stegano.csv
+steganodf decode stegano.csv -p password
 
 ```
 
