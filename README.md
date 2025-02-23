@@ -1,6 +1,10 @@
 
 # Steganodf 
 
+[![PyPi Version](https://img.shields.io/pypi/v/steganodf.svg)](https://pypi.python.org/pypi/steganodf/)
+[![PyPi Python Versions](https://img.shields.io/pypi/pyversions/yt2mp3.svg)](https://pypi.python.org/pypi/steganodf/)
+
+
 A steganography tool for hiding a message in a dataset, such as CSV file.
 
 This tool hides a payload by permuting the rows of the dataset. The is tolerant
