@@ -39,6 +39,8 @@
 
     }
 
+
+
     body {
       background-color: "#F4F7FC";
     }
@@ -56,17 +58,23 @@
     .statusbar {
       width: 100%;
       display: flex;
-      align-items: center;
       justify-content: space-between;
-
+      align-items: center;
     }
+
+    #loading {
+      display: flex;
+      align-items: center;
+      color: darkgray;
+    }
+
 
     header {
       display: flex;
       align-items: center;
       padding-left: 10px;
       background-color: #5196DB;
-      color:white;
+      color: white;
       margin: auto;
     }
 
@@ -156,7 +164,10 @@
         <button py-click="decode" class="secondary">Decode</button>
       </div>
 
-
+      <div id="loading" class="hidden">
+        Processing ... ( It can take a while )
+        <div class="spinner"></div>
+      </div>
       <button id="download" class="tertiary hidden">Download</button>
     </div>
   </div>

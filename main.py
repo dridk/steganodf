@@ -30,11 +30,14 @@ def encode(e):
     print("encode", e)
     payload = document.querySelector("#payload").value.encode()
     dl_button = document.querySelector("#download")
+    loading = document.querySelector("#loading")
     bit_per_row = int(document.querySelector("#bit-select").value)
     password = document.querySelector("#password").value
     password = None if password == "" else password
     
     if dataframe is not None:
+
+        loading.classList.remove("hidden")
         df = st.encode(dataframe, payload, bit_per_row = bit_per_row, password=password)
         stream = io.BytesIO()
         df.write_csv(stream)
@@ -50,6 +53,7 @@ def encode(e):
         hidden_link.setAttribute("download", "data-encoded.csv")
         hidden_link.setAttribute("href", url)
         hidden_link.click()
+        loading.classList.add("hidden")
 
 
 def decode(e):
