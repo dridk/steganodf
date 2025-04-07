@@ -1,10 +1,8 @@
 from typing import Callable, List, Dict, Tuple
 import polars as pl
-import string
 import logging
 import hashlib
-import statistics
-from reedsolo import RSCodec, ReedSolomonError
+from reedsolo import RSCodec
 import hmac
 from struct import unpack
 import io
@@ -15,10 +13,20 @@ from steganodf.algorithms.algorithm import AlgorithmError
 from steganodf.algorithms.permutation_algorithm import PermutationAlgorithm
 from steganodf import lt
 
-# +--------------+--------------------+------+----------+
-# |   HEADER     |      DATA BLOCK    | CRC  | PARITY   |
-# |   12 bytes   |      20 bytes      | 4 b  | 10 bytes |
-# +--------------+--------------------+------+----------+
+"""
+This algorithm encode bits on each row of a dataframe by permutation.
+The payload is split into multiple data packet and write into the row using a
+fontain code LT. A Reed solomon error correction code is also added.  
+This ensure the tolerence to error and cropping.
+
+A packet is composed as follow : 
+
+ +--------------+----------------------------+------------------+
+ |   HEADER     |      DATA (user)    | CRC  | CORRECTION (user) |
+ |   12 bytes   |       20 bytes      | 4 b  | 10 bytes          |
+ +--------------+----------------------------+-------------------+
+
+"""
 
 
 class NotEnoughBitException(Exception):
@@ -29,22 +37,33 @@ class BitPool(PermutationAlgorithm):
 
     def __init__(
         self,
-        bit_per_row: int = 2,
-        block_size: int = 20,
-        parity_size: int = 10,
+        bit_per_row: int = 1,
+        data_size: int = 20,
+        correction_size: int = 10,
         hash_function: Callable = hashlib.md5,
         password: str = None,
         reverse_reading: bool = False,
         **kwargs,
     ):
+        """
+        Initialize an instance of PermutationAlgorithm
+
+        Args:
+            bit_per_row (int): Number of bits per line. Default is 1.
+            data_size (int): Data size of the packet in byte. Defaut is 20.
+            correction_size (int): Correction size of the packet in byte. Default is 10.
+            hash_function (Callable): Hash function to use. Default is MD5.
+            password (str, optional) : Password used for hashing function with a HMAC algorithm.
+            reverse_reading (bool): Read the dataframe also in the reverse direction. It doubles the computation time.
+        """
         super().__init__(**kwargs)
 
         self._hash_function = hash_function
         self._password = password
         self._bit_per_row = bit_per_row
 
-        self._block_size = block_size
-        self._parity_size = parity_size
+        self._data_size = data_size
+        self._correction_size = correction_size
         # cannot be change.. Value from lt-decode
         self._header_size = 12
         # cannot be change .. Value from CRC32
@@ -87,32 +106,45 @@ class BitPool(PermutationAlgorithm):
 
     def get_packet_size(self) -> int:
         """
-        Return size of complete packet
+        Return size of a complete packet
         """
-        return self._header_size + self._block_size + self._crc_size + self._parity_size
+        return self._header_size + self._data_size + self._crc_size + self._correction_size
 
-    def get_max_theoretical_payload_size(self, df: pl.DataFrame):
+    def get_max_theoretical_payload_size(self, df: pl.DataFrame) -> int:
         """
         Return the maximum payload size.
         This is theorically if all bit from the pool are consume by the payload
+
+        Args:
+            df (pl.DataFrame) : The host dataframe
+
+        Returns:
+            The size in bytes
+
         """
-        max_size = (self.get_total_size_available(df) * self._block_size) / (self.get_packet_size())
+        max_size = (self.get_total_size_available(df) * self._data_size) / (self.get_packet_size())
         return max_size
 
-    def get_max_valid_payload_size(self, df: pl.DataFrame) -> int:
+    def get_max_payload_size(self, df: pl.DataFrame) -> int:
         """
-        Return a valid max payload size
+        Return an empirical estimation of the maximum payload size.
+
+        Args:
+            df (pl.DataFrame) : The cover dataframe
+
+        Returns:
+            The size in bytes
+
         """
         max_size = self.get_max_theoretical_payload_size(df)
-        estimate_size = int(max_size // 4)
+        estimate_size = int(max_size // 3)
         return estimate_size
 
     def find_packet(self, df: pl.DataFrame, max_window=100) -> Tuple[int, int, int]:
         """
         TODO
         """
-        new_df = self.compute_hash(df)
-        hash = new_df["hash"].to_list()
+        pass
 
     def compute_hash(self, df: pl.DataFrame) -> pl.DataFrame:
         """
@@ -120,7 +152,7 @@ class BitPool(PermutationAlgorithm):
         The result depend on the bit_per_row.
 
         Args:
-            df (pl.DataFrame): a a Dataframe
+            df (pl.DataFrame): a a cover Dataframe
 
         Return:
             A new dataframe with the 'hash' column computed.
@@ -143,12 +175,12 @@ class BitPool(PermutationAlgorithm):
 
     def create_pool(self, hashes: List[int]) -> Dict[int, int]:
         """
-        From a list of value, create a dictionnary using list index as key and list value as values
-
+        From a list, create a dictionnary using value as key and index as dict value.
+        This is the pool of bit.
         Args:
             hashes(list) : this is the hash column from the dataframe
 
-        >>> algo = BitPool()
+        >>> algo = BitPool(bit_per_row=2)
         >>> res = algo.create_pool([0,0,1,2,2,3])
         >>> res[0] == [0,1]
         True
@@ -169,7 +201,7 @@ class BitPool(PermutationAlgorithm):
 
     def get_remaining_indexes(self, pool: Dict[int, int]) -> List[int]:
         """
-        Return row indices which have not been consuming by the encoder
+        Return row indices from the pool which have not been consuming by the encoder
         """
         indexes = []
         for i in pool.values():
@@ -188,34 +220,37 @@ class BitPool(PermutationAlgorithm):
     def _encode(self, df: pl.DataFrame, payload: bytes) -> Tuple[pl.DataFrame, int]:
         """
         Override method
-
         Encode a payload in dataframe by permutation
+
+        Args:
+            df(pl.DataFrame): The host dataframe
+            payload(bytes): the payload message to hide in the host dataframe
+
+        Return:
+            Return the stego dataframe
+
+
         """
 
-        if len(payload) < self._block_size:
+        if len(payload) < self._data_size:
             logging.info("payload size is smaller than data_size. You will lost capacity")
 
         new_df = self.compute_hash(df)
         pool = self.create_pool(new_df["hash"].to_list())
         indexes = []
-        rsc = RSCodec(self._parity_size)
+        rsc = RSCodec(self._correction_size)
         data = io.BytesIO(payload)
         block_count = 0
         valid_blocks = []
-        for i, block in enumerate(lt.encode.encoder(data, self._block_size)):
+        for i, block in enumerate(lt.encode.encoder(data, self._data_size)):
 
             # Add CRC code
             crc = binascii.crc32(block).to_bytes(self._crc_size)
             block += crc
-
             # Add reed solomon error corection code
-            if self._parity_size > 0:
+            if self._correction_size > 0:
                 block = rsc.encode(block)
 
-            # print(block)
-            # if i == 0:
-            #     print(block)
-            # consume block until not enough bits
             try:
                 backup_pool = copy.deepcopy(pool)
                 bloc_indexes = self.encode_chunk(block, pool)
@@ -226,12 +261,6 @@ class BitPool(PermutationAlgorithm):
                 pool = backup_pool
                 break
 
-        # print("packet crée", block_count)
-        # print(self.len(new_df), len(indexes))
-
-        # for v in valid_blocks:
-        #     print(v)
-
         remains = self.get_remaining_indexes(pool)
         indexes += remains
         return df[indexes], block_count
@@ -241,6 +270,12 @@ class BitPool(PermutationAlgorithm):
         Override method
 
         Decode a payload in dataframe by permutation
+
+        Args:
+            df(pl.Dataframe): The host dataframe containing the secret payload
+
+        Returns:
+            The secret message as bytes
 
         """
         # read hash rows
@@ -253,7 +288,7 @@ class BitPool(PermutationAlgorithm):
 
         hash = new_df["hash"].to_list()
 
-        rsc = RSCodec(self._parity_size)
+        rsc = RSCodec(self._correction_size)
         decoder = lt.decode.LtDecoder()
 
         window = (self.get_packet_size()) * 8 // self._bit_per_row
@@ -265,7 +300,7 @@ class BitPool(PermutationAlgorithm):
             block = self.decode_chunk(chunk)
 
             try:
-                if self._parity_size > 0:
+                if self._correction_size > 0:
                     packet = rsc.decode(block)[0]
                 else:
                     packet = block
@@ -301,12 +336,30 @@ class BitPool(PermutationAlgorithm):
         return {"payload": payload, "success": success, "block_count": len(valid_blocks)}
 
     def encode(self, df: pl.DataFrame, payload: bytes) -> pl.DataFrame:
-        """override from parent"""
+        """
+        Encode a payload in dataframe by permutation
+
+        Args:
+            df(pl.DataFrame): The host dataframe
+            payload(bytes): the payload message to hide in the host dataframe
+
+        Return:
+            Return the stego dataframe
+        """
         df, _ = self._encode(df, payload)
         return df
 
     def decode(self, df: pl.DataFrame) -> bytes:
-        """override from parent"""
+        """
+        Decode the payload from the cover dataframe
+
+        Args:
+            df(pl.DataFrame): The host dataframe
+            payload(bytes): the payload message to hide in the host dataframe
+
+        Return:
+            Return the payload in bytes
+        """
         result = self._decode(df)
         return result["payload"]
 
@@ -315,7 +368,7 @@ class BitPool(PermutationAlgorithm):
         Encode a chunk of bytes in row permutation.
         This methods consumes bytes from the pool and return row indexes.
 
-        >>> algo = BitPool()
+        >>> algo = BitPool(bit_per_row=2)
         >>> algo.encode_chunk(b'hi', {0:[1,3,4,12,13,14,15,16], 1:[0,2,5,17,18,19], 2:[6,7,8,20,21,22], 3:[9,10,11,23,24]})
         [1, 6, 7, 0, 2, 8, 20, 5]
         """
@@ -365,7 +418,7 @@ class BitPool(PermutationAlgorithm):
 
         total = self.get_total_size_available(df)
         packet_count = total // self.get_packet_size()
-        return packet_count * self._block_size
+        return packet_count * self._data_size
 
     def get_total_size_available(self, df: pl.DataFrame) -> int:
         """
@@ -382,10 +435,11 @@ class BitPool(PermutationAlgorithm):
         Return how many packet are required for a payload
         """
 
-        total = len(payload) // self._block_size
+        total = len(payload) // self._data_size
         if total <= 0:
             return 1
         else:
+
             return int(total)
 
     def get_payload_size(self, payload: str) -> int:
