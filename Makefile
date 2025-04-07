@@ -17,3 +17,6 @@ wheel:
 build-site:
 	./build_site.sh
 	
+publish:
+	twine upload dist/*
+	
