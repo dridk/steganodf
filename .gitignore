@@ -3,6 +3,8 @@ __pycache__/
 venv/
 dist/
 notebooks/
-www/
+paper/
+/www/
 *.parquet
 *.csv
+*.png
