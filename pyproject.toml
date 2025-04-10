@@ -5,7 +5,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "steganodf"
-version = "0.2.3"
+version = "0.2.4"
 description = "A library for hiding a secret message on tabulated data" 
 readme = "README.md"
 
