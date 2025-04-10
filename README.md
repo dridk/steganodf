@@ -10,6 +10,9 @@ A steganography tool for hiding a message in a dataset, such as csv or parquet f
 This tool hides a payload by permuting the rows of the dataset. The is tolerant
 to modification thanks to a [Reed-Solomon code](https://en.wikipedia.org/wiki/Reed%E2%80%93Solomon_error_correction) and a [Luby-s LT fontain code](https://en.wikipedia.org/wiki/Luby_transform_code).
 
+# Demo 
+
+An example of encoding an image in a parquet file can be found on [google collab](https://colab.research.google.com/drive/1cp0WaIOO7Xj3ObwR9vr4Nae5KSwyW61e?usp=sharing). 
 
 # Installation 
 
