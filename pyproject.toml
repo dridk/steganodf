@@ -12,7 +12,7 @@ readme = "README.md"
 license = "AGPL-3.0"
 classifiers = [
   "Programming Language :: Python :: 3 :: Only",
-  "License :: OSI Approved :: AGPL-3.0 License",
+  "License :: OSI Approved :: GNU Affero General Public License v3",
   "Natural Language :: English", 
   "Topic :: Security :: Cryptography", 
   "Topic :: Scientific/Engineering :: Information Analysis"
