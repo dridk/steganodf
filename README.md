@@ -12,7 +12,12 @@ to modification thanks to a [Reed-Solomon code](https://en.wikipedia.org/wiki/Re
 
 # Demo 
 
-An example of encoding an image in a parquet file can be found on [google collab](https://colab.research.google.com/drive/1cp0WaIOO7Xj3ObwR9vr4Nae5KSwyW61e?usp=sharing). 
+You can try steganodf directly in your browser using a CSV file.
+All processing is done locally in your browser. Thanks to [PyScript](https://pyscript.net/). no data is ever uploaded or transferred.
+[https://dridk.github.io/steganodf/](https://dridk.github.io/steganodf/) 
+
+You can also experiment with the Python API using this [Google Colab notebook](https://colab.research.google.com/drive/1cp0WaIOO7Xj3ObwR9vr4Nae5KSwyW61e?usp=sharing). 
+
 
 # Installation 
 
