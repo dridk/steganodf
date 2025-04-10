@@ -199,16 +199,17 @@ class BitPool(PermutationAlgorithm):
         #     random.shuffle(pool[key])
         return pool
 
-    def get_remaining_indexes(self, pool: Dict[int, int]) -> List[int]:
+    def get_remaining_indexes(self, pool: Dict[int, int], indexes: List[int] = None) -> List[int]:
         """
         Return row indices from the pool which have not been consuming by the encoder
         """
-        indexes = []
-        for i in pool.values():
-            indexes += i
+        rows = []
+        for k, v in pool.items():
+            i = indexes[k]
+            rows += v[i:]
 
-        random.shuffle(indexes)
-        return indexes
+        random.shuffle(rows)
+        return rows
 
     def bytes_to_rows_count(self, data: bytes) -> int:
         """
@@ -237,11 +238,12 @@ class BitPool(PermutationAlgorithm):
 
         new_df = self.compute_hash(df)
         pool = self.create_pool(new_df["hash"].to_list())
-        indexes = []
+        rows = []
         rsc = RSCodec(self._correction_size)
         data = io.BytesIO(payload)
         block_count = 0
         valid_blocks = []
+        encode_indexes = [0] * 2 ** (self._bit_per_row)
         for i, block in enumerate(lt.encode.encoder(data, self._data_size)):
 
             # Add CRC code
@@ -251,19 +253,20 @@ class BitPool(PermutationAlgorithm):
             if self._correction_size > 0:
                 block = rsc.encode(block)
 
+            old_indexes = encode_indexes.copy()
             try:
-                backup_pool = copy.deepcopy(pool)
-                bloc_indexes = self.encode_chunk(block, pool)
-                indexes += bloc_indexes
-                block_count += 1
-                valid_blocks.append(block)
+                bloc_rows = self.encode_chunk(block, pool, indexes=encode_indexes)
             except NotEnoughBitException:
-                pool = backup_pool
+                encode_indexes = old_indexes
                 break
 
-        remains = self.get_remaining_indexes(pool)
-        indexes += remains
-        return df[indexes], block_count
+            rows += bloc_rows
+            block_count += 1
+            valid_blocks.append(block)
+
+        remains = self.get_remaining_indexes(pool, encode_indexes)
+        rows += remains
+        return df[rows], block_count
 
     def _decode(self, df: pl.DataFrame) -> bytes:
         """
@@ -363,7 +366,9 @@ class BitPool(PermutationAlgorithm):
         result = self._decode(df)
         return result["payload"]
 
-    def encode_chunk(self, chunk: bytes, pool: Dict[int, List[int]]) -> List[int]:
+    def encode_chunk(
+        self, chunk: bytes, pool: Dict[int, List[int]], indexes: List[int] = None
+    ) -> List[int]:
         """
         Encode a chunk of bytes in row permutation.
         This methods consumes bytes from the pool and return row indexes.
@@ -374,7 +379,11 @@ class BitPool(PermutationAlgorithm):
         """
 
         # List of row indexes to returnes
-        indexes = []
+        #
+        if indexes is None:
+            indexes = [0] * (2**self._bit_per_row)
+
+        rows = []
         for byte in chunk:
             # For each bytes, extract bit to use for encoding
             # For example, using bit_per_row=2, split 1 bytes into 4 part
@@ -385,10 +394,11 @@ class BitPool(PermutationAlgorithm):
                 m = mask << i
                 v = (byte & m) >> i
                 try:
-                    indexes.append(pool[v].pop(0))
-                except Exception as e:
+                    rows.append(pool[v][indexes[v]])
+                    indexes[v] += 1
+                except Exception:
                     raise NotEnoughBitException("Not enough bits to encode data ")
-        return indexes
+        return rows
 
     def decode_chunk(self, hashes: List[int]) -> bytes:
         """
