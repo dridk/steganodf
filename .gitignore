@@ -4,6 +4,7 @@ venv/
 dist/
 notebooks/
 paper/
+latex/
 *.parquet
 *.csv
 *.png

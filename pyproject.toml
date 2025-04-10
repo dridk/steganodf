@@ -5,14 +5,14 @@ build-backend = "hatchling.build"
 
 [project]
 name = "steganodf"
-version = "0.2.4"
+version = "0.2.5"
 description = "A library for hiding a secret message on tabulated data" 
 readme = "README.md"
 
-license = "MIT"
+license = "AGPL-3.0"
 classifiers = [
   "Programming Language :: Python :: 3 :: Only",
-  "License :: OSI Approved :: MIT License",
+  "License :: OSI Approved :: AGPL-3.0 License",
   "Natural Language :: English", 
   "Topic :: Security :: Cryptography", 
   "Topic :: Scientific/Engineering :: Information Analysis"
