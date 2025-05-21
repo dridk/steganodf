@@ -55,6 +55,9 @@ message = steganodf.decode(df, password="secret")
 
 ```
 
+## Citation
+[Watermark tabular datasets with rows permutations and fountain code
+computing and processing](https://www.techrxiv.org/doi/full/10.36227/techrxiv.174585796.61215338/v1)
 
 
 
