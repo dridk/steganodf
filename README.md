@@ -56,6 +56,8 @@ message = steganodf.decode(df, password="secret")
 ```
 
 ## Citation
+Sacha Schutz, Meganne Souprayen. Watermark tabular datasets with rows permutations and fountain code. TechRxiv. April 28, 2025.
+DOI: 10.36227/techrxiv.174585796.61215338/v1
 [Watermark tabular datasets with rows permutations and fountain code
 computing and processing](https://www.techrxiv.org/doi/full/10.36227/techrxiv.174585796.61215338/v1)
 
