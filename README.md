@@ -14,9 +14,6 @@ to modification thanks to a [Reed-Solomon code](https://en.wikipedia.org/wiki/Re
 
 You can  experiment with the Python API using this [Google Colab notebook](https://colab.research.google.com/drive/1cp0WaIOO7Xj3ObwR9vr4Nae5KSwyW61e?usp=sharing). 
 
-You can also try steganodf directly in your browser using a CSV file. But this has no complete feature.
-[https://dridk.github.io/steganodf/](https://dridk.github.io/steganodf/) 
-
 
 # Installation 
 
