@@ -30,7 +30,7 @@
   </style>
 </head>
 
-<body class="bg-neutral-50 text-neutral-900 h-screen flex flex-col overflow-hidden">
+<body class="bg-neutral-50 text-neutral-900 flex flex-col sm:h-screen sm:overflow-hidden">
 
   <!-- ── Top bar ── -->
   <header class="h-14 shrink-0 border-b border-neutral-200 bg-white flex items-center px-5 gap-3">
@@ -66,10 +66,10 @@
   </header>
 
   <!-- ── Body: sidebar + main ── -->
-  <div class="flex flex-1 overflow-hidden">
+  <div class="flex flex-col sm:flex-row sm:flex-1 sm:overflow-hidden">
 
     <!-- ── Left sidebar ── -->
-    <aside class="w-72 shrink-0 bg-white border-r border-neutral-200 flex flex-col p-5 gap-4 overflow-y-auto">
+    <aside class="w-full sm:w-72 sm:shrink-0 bg-white border-b sm:border-b-0 sm:border-r border-neutral-200 flex flex-col p-5 gap-4 sm:overflow-y-auto">
 
       <p class="text-[10px] font-semibold uppercase tracking-widest text-neutral-400 pb-1">Parameters</p>
 
@@ -98,11 +98,11 @@
       <div class="border-t border-neutral-100 my-1"></div>
 
       <!-- Secret message -->
-      <div class="flex flex-col gap-1 flex-1 min-h-0">
+      <div class="flex flex-col gap-1 sm:flex-1 sm:min-h-0">
         <label class="text-sm font-medium text-neutral-800" for="payload">Secret message</label>
         <p class="text-xs text-neutral-400 leading-snug">Type to encode — decoded text appears here.</p>
         <textarea id="payload" placeholder="Your secret message…"
-          class="mt-1.5 flex-1 w-full min-h-[120px] rounded-md border border-neutral-200 bg-white px-3 py-2 text-sm
+          class="mt-1.5 w-full h-28 sm:flex-1 sm:min-h-0 rounded-md border border-neutral-200 bg-white px-3 py-2 text-sm
                  placeholder:text-neutral-400 focus:outline-none focus:ring-2 focus:ring-neutral-300
                  transition-shadow resize-none"></textarea>
       </div>
@@ -140,11 +140,11 @@
     </aside>
 
     <!-- ── Main area ── -->
-    <main class="flex-1 flex flex-col items-center justify-center gap-5 p-8 overflow-y-auto">
+    <main class="flex-1 flex flex-col items-center justify-center gap-5 p-6 sm:p-8 sm:overflow-y-auto">
 
       <!-- Drop zone -->
       <div id="drop-zone"
-        class="relative w-80 h-80 rounded-2xl border-2 border-dashed border-neutral-200 bg-white
+        class="relative w-full max-w-xs sm:w-80 h-64 sm:h-80 rounded-2xl border-2 border-dashed border-neutral-200 bg-white
                flex flex-col items-center justify-center gap-3 cursor-pointer
                transition-all hover:border-neutral-300 hover:bg-neutral-50 select-none">
 
@@ -185,7 +185,7 @@
               <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
               <polyline points="14 2 14 8 20 8"/>
             </svg>
-            <span id="file-name" class="text-xs text-neutral-600 font-medium truncate max-w-[220px]"></span>
+            <span id="file-name" class="text-xs text-neutral-600 font-medium truncate max-w-[180px] sm:max-w-[220px]"></span>
           </div>
         </div>
 
