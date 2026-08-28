@@ -156,12 +156,25 @@ def test_free_bit_per_row(df: pl.DataFrame, bit_per_row):
 
 
 def test_capacity_grows_with_bit_per_row(df: pl.DataFrame):
-    """A payload sized for bit_per_row=8 (~4x the bit_per_row=2 estimate) really
-    fits and survives the roundtrip.
+    """A payload sized by the estimator for bit_per_row=6 (several times the
+    bit_per_row=1 estimate) really fits and survives the roundtrip.
     """
-    algorithm = BitPool(bit_per_row=8, seed=1)
+    algorithm = BitPool(bit_per_row=6, seed=1)
     size = algorithm.get_max_payload_size(df)
-    assert size > 3 * BitPool(bit_per_row=2).get_max_payload_size(df)
+    assert size > 3 * BitPool(bit_per_row=1).get_max_payload_size(df)
+
+    payload = bytes(i % 256 for i in range(size))
+    assert algorithm.decode(algorithm.encode(df, payload)) == payload
+
+
+def test_estimate_is_safe_in_exhaustion_regime(df: pl.DataFrame):
+    """At bit_per_row=10 on 10,000 rows the pool queues hold ~10 rows each and
+    only a handful of packets fit. The simulated estimate must stay decodable
+    even there.
+    """
+    algorithm = BitPool(bit_per_row=10, seed=1)
+    size = algorithm.get_max_payload_size(df)
+    assert size > 0
 
     payload = bytes(i % 256 for i in range(size))
     assert algorithm.decode(algorithm.encode(df, payload)) == payload

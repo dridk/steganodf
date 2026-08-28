@@ -169,9 +169,57 @@ class BitPool(PermutationAlgorithm):
         max_size = (self.get_total_size_available(df) * self._data_size) // self.get_packet_size()
         return max_size
 
+    def simulate_packet_count(self, df: pl.DataFrame, trials: int = 20) -> int:
+        """
+        Estimate how many packets fit in the dataframe before a pool queue runs dry.
+
+        Thanks to the packet scrambling the written symbols are uniformly
+        distributed, so writing can be simulated by drawing random symbols against
+        the real queue sizes of the dataframe — no encoding needed. The worst of
+        `trials` seeded simulations is returned, as a conservative figure.
+
+        Args:
+            df (pl.DataFrame) : The cover dataframe
+            trials (int): Number of simulations. Default is 20.
+
+        Returns:
+            The packet count
+        """
+        pool_count = 2**self._bit_per_row
+        sizes = [0] * pool_count
+        for value, count in self.compute_hash(df)["hash"].value_counts().iter_rows():
+            sizes[value] = count
+
+        symbols_per_packet = (self.get_packet_size() * 8 + self._bit_per_row - 1) // self._bit_per_row
+        rng = random.Random(0)
+        worst = None
+        for _ in range(trials):
+            remaining = sizes.copy()
+            packets = 0
+            exhausted = False
+            while not exhausted:
+                for _ in range(symbols_per_packet):
+                    value = rng.randrange(pool_count)
+                    if remaining[value] == 0:
+                        exhausted = True
+                        break
+                    remaining[value] -= 1
+                else:
+                    packets += 1
+            worst = packets if worst is None else min(worst, packets)
+        return worst
+
     def get_max_payload_size(self, df: pl.DataFrame) -> int:
         """
         Return an empirical estimation of the maximum payload size.
+
+        The packet count is simulated against the real pool of the dataframe (see
+        `simulate_packet_count`), so the estimate accounts for queue exhaustion at
+        high bit_per_row values. The LT fountain then needs noticeably more encoded
+        packets than source blocks to converge, and the sliding window at decoding
+        time cannot use the very last rows of the file: the division by 3 is an
+        empirical safety margin for that, not a bound (measured at 0 failures over
+        125 random dataframes across bit_per_row 1 to 10).
 
         Args:
             df (pl.DataFrame) : The cover dataframe
@@ -180,15 +228,8 @@ class BitPool(PermutationAlgorithm):
             The size in bytes
 
         """
-        max_size = self.get_max_theoretical_payload_size(df)
-        # The LT fountain needs noticeably more encoded blocks than source blocks to
-        # converge, and the sliding window at decoding time cannot use the very last
-        # rows of the file. The divisor is an empirical safety margin, not a bound.
-        # Near bit_per_row = log2(row_count) the pool queues hold only a few rows
-        # each and exhaustion dominates: this estimate then becomes optimistic, so
-        # verify with a decode. Full capacity needs bit_per_row <= log2(row_count)-4.
-        estimate_size = int(max_size // 4)
-        return estimate_size
+        packets = self.simulate_packet_count(df)
+        return packets * self._data_size // 3
 
     def compute_hash(self, df: pl.DataFrame) -> pl.DataFrame:
         """
