@@ -192,9 +192,11 @@ payload décodable) : 360 o à `b=1`, 1 505 o à `b=4`, **1 579 o à `b=8`** ; a
 
 ### Autres pistes documentées
 
-- **En-tête court quand `K = 1`.** Remplacer l'en-tête LT de 12 octets par 2 octets
-  (numéro de bloc + total) pour les payloads plus petites que `data_size` : ~44 % de
-  copies redondantes en plus, gratuitement.
+- **En-tête court quand `K = 1`** (implémenté). Pour un payload ≤ `data_size − 1`,
+  la fontaine LT dégénère en répétition : l'en-tête de 12 octets est remplacé par
+  un nonce de 2 octets (qui alimente le brouillage) plus un octet de longueur —
+  paquet de 36 octets au lieu de 46, ~25 % de copies redondantes en plus mesurées,
+  et un seul paquet valide reconstruit tout le message (pas de décodeur LT).
 - **`AlterationAlgorithm`** (la classe est vide) : marquage par altération plutôt que
   par permutation. LSB sur colonnes numériques façon Agrawal & Kiernan (VLDB 2002,
   sélection des tuples par HMAC sur une clé primaire virtuelle), ou QIM / dither

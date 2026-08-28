@@ -180,6 +180,44 @@ def test_estimate_is_safe_in_exhaustion_regime(df: pl.DataFrame):
     assert algorithm.decode(algorithm.encode(df, payload)) == payload
 
 
+@pytest.mark.parametrize("size", [0, 1, 16, 19])
+def test_short_mode_roundtrip(df: pl.DataFrame, size):
+    """A payload that fits in one data block uses the short packet format: a
+    single valid packet recovers the whole message.
+    """
+    payload = bytes(range(size))
+    algorithm = BitPool(bit_per_row=2, seed=1)
+
+    result = algorithm.decode_details(algorithm.encode(df, payload))
+
+    assert result["success"] is True
+    assert result["payload"] == payload
+    assert result["mode"] == "short"
+
+
+def test_mode_boundary(df: pl.DataFrame):
+    """With the default data_size of 20, a 19-byte payload is the largest short
+    one; 20 bytes go through the LT fountain.
+    """
+    algorithm = BitPool(bit_per_row=2, seed=1)
+
+    assert algorithm.decode_details(algorithm.encode(df, b"x" * 19))["mode"] == "short"
+    assert algorithm.decode_details(algorithm.encode(df, b"x" * 20))["mode"] == "standard"
+
+
+def test_short_mode_fits_more_packets(df: pl.DataFrame):
+    """Short packets are 36 bytes instead of 46, so more redundant copies of a
+    small payload fit in the same dataframe.
+    """
+    algorithm = BitPool(bit_per_row=2, seed=1)
+    _, short_packets = algorithm._encode(df, b"x" * 16)
+
+    algorithm = BitPool(bit_per_row=2, seed=1)
+    _, standard_packets = algorithm._encode(df, b"x" * 20)
+
+    assert short_packets > standard_packets
+
+
 @pytest.mark.parametrize("bit_per_row", [0, 17])
 def test_bit_per_row_out_of_bounds(bit_per_row):
     with pytest.raises(AlgorithmError):

@@ -75,6 +75,10 @@ algorithm = BitPool(bit_per_row=2, password="secret")
 algorithm.get_max_payload_size(df)   # safe payload size, in bytes
 ```
 
+A payload of at most 19 bytes (the typical watermark) is automatically written
+in a compact packet format: ~25% more redundant copies fit in the dataframe,
+and a single surviving packet is enough to recover the whole message.
+
 `decode` returns empty bytes when no complete message could be recovered. Use
 `BitPool.decode_details(df)` to tell "no watermark" apart from a successful read.
 

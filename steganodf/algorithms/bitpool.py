@@ -20,17 +20,26 @@ The payload is split into multiple data packet and write into the row using a
 fontain code LT. A Reed solomon error correction code is also added.  
 This ensure the tolerence to error and cropping.
 
-A packet is composed as follow : 
+A standard packet is composed as follow :
 
  +--------------+----------------------------+------------------+
  |   HEADER     |      DATA (user)    | CRC  | CORRECTION (user) |
  |   12 bytes   |       20 bytes      | 4 b  | 10 bytes          |
  +--------------+----------------------------+-------------------+
 
-The header and data are scrambled with a pad derived from the packet's own
-blockseed before the CRC and correction code are computed, so that every packet
-consumes the pool queues uniformly (see scramble_block). The packet is then
-written as a continuous bit stream, bit_per_row bits per row.
+A payload that fits in a single data block skips the LT fountain entirely and
+uses the short-mode packet instead, where a single valid packet recovers the
+whole message :
+
+ +---------+-------+--------------------+------+-------------------+
+ |  NONCE  |  LEN  |   DATA (user)      | CRC  | CORRECTION (user) |
+ |  2 bytes|  1 b  |   19 bytes         | 4 b  | 10 bytes          |
+ +---------+-------+--------------------+------+-------------------+
+
+In both modes the block is scrambled with a pad derived from its own varying
+field (blockseed or nonce) before the CRC and correction code are computed, so
+that every packet consumes the pool queues uniformly (see scramble_block). The
+packet is then written as a continuous bit stream, bit_per_row bits per row.
 """
 
 
@@ -86,6 +95,8 @@ class BitPool(PermutationAlgorithm):
         self._header_size = 12
         # cannot be change .. Value from CRC32
         self._crc_size = 4
+        # short-mode packets: random nonce feeding the scrambling
+        self._nonce_size = 2
 
         # Read also in reverse
         self._reverse_reading = reverse_reading
@@ -124,18 +135,27 @@ class BitPool(PermutationAlgorithm):
         digest = int.from_bytes(hash.digest()[:nbytes], "big")
         return digest >> (nbytes * 8 - self._bit_per_row)
 
-    def get_packet_size(self) -> int:
+    def get_packet_size(self, short: bool = False) -> int:
         """
-        Return size of a complete packet
-        """
-        return self._header_size + self._data_size + self._crc_size + self._correction_size
+        Return size of a complete packet.
 
-    def scramble_block(self, block: bytes) -> bytes:
+        Args:
+            short (bool): Size of a short-mode packet (nonce + length + data)
+                instead of a standard LT packet. See `_encode`.
         """
-        XOR the whole block with a pad derived from its own blockseed field
-        (bytes 8 to 11), which changes with every packet. The seed field itself is
-        left in clear so the decoder can regenerate the pad. The operation is its
-        own inverse.
+        if short:
+            data = self._nonce_size + 1 + (self._data_size - 1)
+        else:
+            data = self._header_size + self._data_size
+        return data + self._crc_size + self._correction_size
+
+    def scramble_block(self, block: bytes, seed_start: int = 8, seed_size: int = 4) -> bytes:
+        """
+        XOR the whole block with a pad derived from its own seed field — the LT
+        blockseed (bytes 8 to 11) for a standard packet, the nonce (bytes 0 to 1)
+        for a short-mode packet — which changes with every packet. The seed field
+        itself is left in clear so the decoder can regenerate the pad. The
+        operation is its own inverse.
 
         Without it, packets repeat themselves: the header fields (filesize,
         blocksize) are identical in every packet, and with a small payload the data
@@ -145,15 +165,16 @@ class BitPool(PermutationAlgorithm):
         bit_per_row values. Scrambling makes every packet pseudo-random, so the
         queues are consumed uniformly.
         """
+        seed_end = seed_start + seed_size
         pad = b""
         counter = 0
         while len(pad) < len(block):
-            pad += hashlib.sha256(block[8:12] + counter.to_bytes(4, "big")).digest()
+            pad += hashlib.sha256(block[seed_start:seed_end] + counter.to_bytes(4, "big")).digest()
             counter += 1
         return (
-            bytes(a ^ b for a, b in zip(block[:8], pad))
-            + block[8:12]
-            + bytes(a ^ b for a, b in zip(block[12:], pad[12:]))
+            bytes(a ^ b for a, b in zip(block[:seed_start], pad))
+            + block[seed_start:seed_end]
+            + bytes(a ^ b for a, b in zip(block[seed_end:], pad[seed_end:]))
         )
 
     def get_max_theoretical_payload_size(self, df: pl.DataFrame) -> int:
@@ -335,10 +356,38 @@ class BitPool(PermutationAlgorithm):
 
         return (len(data) * 8 + self._bit_per_row - 1) // self._bit_per_row
 
+    def is_short_payload(self, payload: bytes) -> bool:
+        """
+        Return whether the payload fits in a single short-mode packet.
+        """
+        return len(payload) <= self._data_size - 1
+
+    def _short_blocks(self, payload: bytes):
+        """
+        Yield an infinite stream of scrambled short-mode blocks.
+
+        When the payload fits in one data block the LT fountain degenerates into
+        plain repetition, so its 12-byte header is dead weight. A short-mode block
+        replaces it with a 2-byte random nonce (which feeds the scrambling, so the
+        repeated packets still consume the pool queues uniformly) and a length
+        byte: `nonce + length + payload + zero padding`, one packet is enough to
+        recover the whole message.
+        """
+        body = bytes([len(payload)]) + payload
+        body += b"\x00" * (self._data_size - len(body))
+        while True:
+            nonce = self._random.randrange(1 << (8 * self._nonce_size))
+            block = nonce.to_bytes(self._nonce_size, "big") + body
+            yield self.scramble_block(block, seed_start=0, seed_size=self._nonce_size)
+
     def _encode(self, df: pl.DataFrame, payload: bytes) -> Tuple[pl.DataFrame, int]:
         """
         Override method
         Encode a payload in dataframe by permutation
+
+        A payload that fits in a single data block (`is_short_payload`) is written
+        as short-mode packets (see `_short_blocks`); a larger one goes through the
+        LT fountain.
 
         Args:
             df(pl.DataFrame): The host dataframe
@@ -350,20 +399,25 @@ class BitPool(PermutationAlgorithm):
 
         """
 
-        if len(payload) < self._data_size:
-            logging.info("payload size is smaller than data_size. You will lost capacity")
-
         new_df = self.compute_hash(df)
         pool = self.create_pool(new_df["hash"].to_list())
         rows = []
         rsc = RSCodec(self._correction_size) if self._correction_size > 0 else None
-        data = io.BytesIO(payload)
         block_count = 0
         encode_indexes = [0] * 2 ** (self._bit_per_row)
-        lt_seed = self._random.randint(0, (1 << 31) - 2)
-        for block in lt.encode.encoder(data, self._data_size, seed=lt_seed):
 
-            block = self.scramble_block(block)
+        short = self.is_short_payload(payload)
+        if short:
+            blocks = self._short_blocks(payload)
+        else:
+            lt_seed = self._random.randint(0, (1 << 31) - 2)
+            blocks = (
+                self.scramble_block(block)
+                for block in lt.encode.encoder(io.BytesIO(payload), self._data_size, seed=lt_seed)
+            )
+
+        for block in blocks:
+
             # Add CRC code
             crc = binascii.crc32(block).to_bytes(self._crc_size, "big")
             block += crc
@@ -382,10 +436,11 @@ class BitPool(PermutationAlgorithm):
             block_count += 1
 
         if block_count == 0:
-            packet_bits = self.get_packet_size() * 8
+            packet_size = self.get_packet_size(short=short)
+            packet_bits = packet_size * 8
             required = (packet_bits + self._bit_per_row - 1) // self._bit_per_row
             raise AlgorithmError(
-                f"Not a single {self.get_packet_size()} bytes packet could be encoded. "
+                f"Not a single {packet_size} bytes packet could be encoded. "
                 f"At bit_per_row={self._bit_per_row} a packet spans {required} rows, and the "
                 f"dataframe has {len(df)} — each of the {2 ** self._bit_per_row} hash values "
                 "must also occur often enough. Lower correction_size/data_size, raise "
@@ -396,11 +451,95 @@ class BitPool(PermutationAlgorithm):
         rows += remains
         return df[rows], block_count
 
+    def _iter_packets(self, hashes: List[int], rsc, packet_size: int):
+        """
+        Slide a packet-sized window over the symbol stream and yield every
+        candidate that passes Reed-Solomon and CRC32, still scrambled and
+        stripped of its CRC.
+        """
+        window = (packet_size * 8 + self._bit_per_row - 1) // self._bit_per_row
+        for i in range(0, len(hashes) - window + 1):
+            # The window is rounded up in rows, so drop the padding bytes
+            block = self.decode_chunk(hashes[i : i + window])[:packet_size]
+
+            try:
+                packet = rsc.decode(block)[0] if rsc is not None else block
+            except Exception:
+                continue
+
+            crc = packet[-self._crc_size :]
+            read_crc = binascii.crc32(packet[: -self._crc_size]).to_bytes(self._crc_size, "big")
+
+            # The CRC covers the scrambled block; unscramble only after checking it
+            if crc == read_crc:
+                yield packet[: -self._crc_size]
+
+    def _decode_short(self, hashes: List[int], rsc) -> Dict:
+        """
+        Look for short-mode packets. A single valid packet carries the whole
+        message, so the first hit wins.
+        """
+        for body in self._iter_packets(hashes, rsc, self.get_packet_size(short=True)):
+            body = self.scramble_block(body, seed_start=0, seed_size=self._nonce_size)
+            length = body[self._nonce_size]
+            data = body[self._nonce_size + 1 :]
+
+            # The zero padding doubles as a validity check on top of the CRC
+            if length <= len(data) and not any(data[length:]):
+                return {
+                    "payload": data[:length],
+                    "success": True,
+                    "block_count": 1,
+                    "mode": "short",
+                }
+
+        return {"payload": b"", "success": False, "block_count": 0, "mode": None}
+
+    def _decode_standard(self, hashes: List[int], rsc) -> Dict:
+        """
+        Look for standard LT packets and feed them to the fountain decoder.
+        """
+        decoder = lt.decode.LtDecoder()
+        success = False
+        valid_blocks = 0
+        for body in self._iter_packets(hashes, rsc, self.get_packet_size()):
+            body = self.scramble_block(body)
+
+            # The LT header is (filesize, blocksize, blockseed); see lt/encode/__init__.py
+            filesize, blocksize, blockseed = unpack("!III", body[: self._header_size])
+            data = body[self._header_size :]
+
+            if blocksize == len(data):
+                valid_blocks += 1
+                stream = io.BytesIO(body)
+                header = lt.decode._read_header(stream)
+                block = lt.decode._read_block(header[1], stream)
+                decoder.consume_block((header, block))
+
+                if decoder.is_done():
+                    success = True
+                    break
+
+        # A partially filled LT decoder cannot produce a partial message: its
+        # `bytes_dump` would silently concatenate the blocks it did resolve, yielding
+        # shifted, corrupted output. Only dump it once belief propagation converged.
+        payload = decoder.bytes_dump() if success else b""
+
+        return {
+            "payload": payload,
+            "success": success,
+            "block_count": valid_blocks,
+            "mode": "standard" if success else None,
+        }
+
     def _decode(self, df: pl.DataFrame) -> bytes:
         """
         Override method
 
-        Decode a payload in dataframe by permutation
+        Decode a payload in dataframe by permutation.
+
+        The short-mode pass runs first (its first valid packet ends the search);
+        the standard LT pass only runs when it found nothing.
 
         Args:
             df(pl.Dataframe): The host dataframe containing the secret payload
@@ -420,49 +559,12 @@ class BitPool(PermutationAlgorithm):
         hash = new_df["hash"].to_list()
 
         rsc = RSCodec(self._correction_size) if self._correction_size > 0 else None
-        decoder = lt.decode.LtDecoder()
 
-        packet_size = self.get_packet_size()
-        window = (packet_size * 8 + self._bit_per_row - 1) // self._bit_per_row
-        success = False
-        valid_blocks = 0
-        for i in range(0, len(hash) - window + 1):
-            chunk = hash[i : i + window]
-            # The window is rounded up in rows, so drop the padding bytes
-            block = self.decode_chunk(chunk)[:packet_size]
+        result = self._decode_short(hash, rsc)
+        if result["success"]:
+            return result
 
-            try:
-                packet = rsc.decode(block)[0] if rsc is not None else block
-            except Exception:
-                continue
-
-            crc = packet[-self._crc_size :]
-            read_crc = binascii.crc32(packet[: -self._crc_size]).to_bytes(self._crc_size, "big")
-
-            # The CRC covers the scrambled block; unscramble only after checking it
-            body = self.scramble_block(packet[: -self._crc_size])
-
-            # The LT header is (filesize, blocksize, blockseed); see lt/encode/__init__.py
-            filesize, blocksize, blockseed = unpack("!III", body[: self._header_size])
-            data = body[self._header_size :]
-
-            if blocksize == len(data) and crc == read_crc:
-                valid_blocks += 1
-                stream = io.BytesIO(body)
-                header = lt.decode._read_header(stream)
-                block = lt.decode._read_block(header[1], stream)
-                decoder.consume_block((header, block))
-
-                if decoder.is_done():
-                    success = True
-                    break
-
-        # A partially filled LT decoder cannot produce a partial message: its
-        # `bytes_dump` would silently concatenate the blocks it did resolve, yielding
-        # shifted, corrupted output. Only dump it once belief propagation converged.
-        payload = decoder.bytes_dump() if success else b""
-
-        return {"payload": payload, "success": success, "block_count": valid_blocks}
+        return self._decode_standard(hash, rsc)
 
     def encode(self, df: pl.DataFrame, payload: bytes) -> pl.DataFrame:
         """
@@ -501,8 +603,10 @@ class BitPool(PermutationAlgorithm):
 
         Return:
             A dict with the `payload` (bytes), whether the message was fully
-            reconstructed (`success`), and how many valid packets were read
-            (`block_count`).
+            reconstructed (`success`), how many valid packets were read
+            (`block_count`), and the packet `mode` used ("short" for a payload
+            that fits in one packet, "standard" for the LT fountain, None on
+            failure).
         """
         result = self._decode(df)
         if not result["success"]:
