@@ -1,7 +1,7 @@
 .PHONY: build-site
 
 install:
-	python -m pip install -e ".[all]"
+	python -m pip install -e ".[dev]"
 test:
 	pytest --doctest-modules steganodf tests
 
