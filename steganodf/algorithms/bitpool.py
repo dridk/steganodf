@@ -47,6 +47,7 @@ class BitPool(PermutationAlgorithm):
         password: str = None,
         reverse_reading: bool = False,
         seed: int = None,
+        sort_columns: bool = True,
         **kwargs,
     ):
         """
@@ -65,6 +66,10 @@ class BitPool(PermutationAlgorithm):
             seed (int, optional): Seed of the random generator used at encoding time. Encoding
                 is random by default; setting a seed makes it reproducible. Decoding never
                 depends on it.
+            sort_columns (bool): Sort the columns by name before hashing each row, so the
+                watermark survives a reordering of the columns. Default is True. Set it to
+                False to keep the fingerprint sensitive to the physical column order.
+                Encoding and decoding must use the same value.
         """
         super().__init__(**kwargs)
 
@@ -82,6 +87,8 @@ class BitPool(PermutationAlgorithm):
 
         # Read also in reverse
         self._reverse_reading = reverse_reading
+
+        self._sort_columns = sort_columns
 
         if not 1 <= self._bit_per_row <= 16:
             raise AlgorithmError("bit_per_row must be between 1 and 16")
@@ -188,6 +195,11 @@ class BitPool(PermutationAlgorithm):
         Add a 'hash' column containing the hash fingerprint of the row
         The result depend on the bit_per_row.
 
+        The fingerprint is canonical: the cells are joined with a separator (so
+        ("ab", "c") and ("a", "bc") differ), a null is distinguished from an empty
+        string, and the columns are sorted by name first unless sort_columns is
+        False (so reordering the columns preserves the watermark).
+
         Args:
             df (pl.DataFrame): a a cover Dataframe
 
@@ -202,9 +214,12 @@ class BitPool(PermutationAlgorithm):
 
         """
 
+        columns = sorted(df.columns) if self._sort_columns else df.columns
         df = df.with_columns(
-            df.cast(pl.Utf8())
-            .sum_horizontal()
+            pl.concat_str(
+                [pl.col(name).cast(pl.Utf8()).fill_null("\x00") for name in columns],
+                separator="\x1f",
+            )
             .map_elements(self.hash, return_dtype=pl.UInt32)
             .alias("hash")
         )

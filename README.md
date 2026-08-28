@@ -82,8 +82,9 @@ algorithm.get_max_payload_size(df)   # safe payload size, in bytes
 
 - The message lives in the **order of the rows**. Sorting, deduplicating or
   repartitioning the dataset erases it — no password needed, no data lost.
-- The row fingerprint is computed from the concatenation of the columns **in their
-  current order**, so reordering, adding or renaming columns also erases it.
+- The row fingerprint survives a **reordering of the columns** (they are sorted by
+  name before hashing, disable with `sort_columns=False`), but **adding, removing
+  or renaming** a column still erases the message.
 - Without a `password` the fingerprint is a plain MD5: anyone can read the message
   and rewrite their own.
 

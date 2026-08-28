@@ -237,13 +237,13 @@ payload décodable) : 360 o à `b=1`, 1 505 o à `b=4`, **1 579 o à `b=8`** ; a
 
 ### Points ouverts
 
-- **`compute_hash` n'est pas canonique.** `df.cast(pl.Utf8()).sum_horizontal()`
-  concatène **sans séparateur** et **dans l'ordre des colonnes** :
-  `("ab", "c")` et `("a", "bc")` produisent la même empreinte, et réordonner les
-  colonnes casse le décodage. Le correctif (`pl.concat_str` avec séparateur, colonnes
-  triées, marqueur de null) **changerait toutes les empreintes** et rendrait
-  indécodables les fichiers marqués par les versions ≤ 0.2.5. Décision reportée ;
-  le comportement actuel est verrouillé par `test_column_order_matters`.
+- **`compute_hash` est désormais canonique** (résolu). Les cellules sont jointes
+  par `pl.concat_str` avec le séparateur `0x1F`, les nulls reçoivent un marqueur
+  distinct de la chaîne vide, et les colonnes sont triées par nom
+  (désactivable via `sort_columns=False`) : réordonner les colonnes ne casse
+  plus le décodage. Renommer, ajouter ou supprimer une colonne le casse
+  toujours. Les fichiers marqués par les versions ≤ 0.2.5 ne sont plus
+  décodables (rupture de format assumée).
 - **`www/pyscript.json` fige la version** (`steganodf-0.2.5-...whl`) : tout bump de
   version dans `pyproject.toml` casse le site sans que rien ne le signale.
 - **Performance du décodage** : `map_elements` (UDF Python) + `O(n)` décodages

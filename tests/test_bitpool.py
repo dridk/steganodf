@@ -100,15 +100,38 @@ def test_roundtrip_through_disk(df: pl.DataFrame, tmp_path, suffix):
     assert BitPool(bit_per_row=2, password="secret").decode(reloaded) == payload
 
 
-def test_column_order_matters(df: pl.DataFrame):
-    """The row fingerprint concatenates the columns in their current order, so
-    reordering them destroys the message. Documented here so a future change of
-    `compute_hash` shows up as a deliberate decision.
+def test_column_reordering_is_survived(df: pl.DataFrame):
+    """The row fingerprint sorts the columns by name by default, so reordering
+    the columns of the file preserves the message.
     """
     algorithm = BitPool(bit_per_row=2, seed=1)
     encoded = algorithm.encode(df, payload=b"hello")
 
+    assert algorithm.decode(encoded.select(["b", "a"])) == b"hello"
+
+
+def test_column_order_matters_without_sorting(df: pl.DataFrame):
+    """With sort_columns=False the fingerprint depends on the physical column
+    order, so reordering the columns destroys the message.
+    """
+    algorithm = BitPool(bit_per_row=2, seed=1, sort_columns=False)
+    encoded = algorithm.encode(df, payload=b"hello")
+
     assert algorithm.decode(encoded.select(["b", "a"])) == b""
+
+
+def test_null_differs_from_empty_string():
+    """A null cell and an empty string cell must produce different fingerprints,
+    and adjacent cells must not blend into each other.
+    """
+    algo = BitPool(bit_per_row=8)
+
+    def fingerprint(row):
+        df = pl.DataFrame({"a": [row[0]], "b": [row[1]]})
+        return algo.compute_hash(df)["hash"][0]
+
+    assert fingerprint((None, "x")) != fingerprint(("", "x"))
+    assert fingerprint(("ab", "c")) != fingerprint(("a", "bc"))
 
 
 def test_encoding_is_reproducible_with_a_seed(df: pl.DataFrame):
