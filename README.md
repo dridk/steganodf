@@ -7,8 +7,12 @@
 
 A steganography tool for hiding a message in a dataset, such as csv or parquet files.
 
-This tool hides a payload by permuting the rows of the dataset. The is tolerant
+By default this tool hides a payload by permuting the rows of the dataset. It is tolerant
 to modification thanks to a [Reed-Solomon code](https://en.wikipedia.org/wiki/Reed%E2%80%93Solomon_error_correction) and a [Luby-s LT fontain code](https://en.wikipedia.org/wiki/Luby_transform_code).
+
+Two additional algorithms hide the message in the **cell content** instead of the
+row order, so the watermark **survives a shuffle or an `ORDER BY`** (see
+[Algorithms](#algorithms)).
 
 # Demo 
 
@@ -53,6 +57,37 @@ message = steganodf.decode(new_df, password="secret")
 
 ```
 
+## Algorithms
+
+Choose an algorithm with `algorithm=` (Python) or `-a` (CLI). All three share the
+same Reed-Solomon / CRC / fountain protection and the same canonical row
+fingerprint (columns sorted by name, so a column reordering is survived).
+
+| Algorithm | Where the message lives | Survives a row shuffle? | Capacity | Cost |
+|---|---|---|---|---|
+| `bitpool` (default) | Order of the rows | ❌ sorting/shuffling erases it | High | Zero distortion |
+| `bitvote` | LSB of one numeric column, majority-voted | ✅ | ~19 bytes | 1 ULP per row |
+| `bitghost` | Synthetic self-identifying rows | ✅ | ~250 bytes | Injects fake rows |
+
+- **`bitvote`** writes one message bit in the least significant bit of a numeric
+  carrier column, choosing the target bit and a mask from a keyed fingerprint of
+  the row's other columns. Decoding lets every row vote and takes the majority, so
+  it also shrugs off row deletion, sampling, sparse cell edits and foreign rows. It
+  does not survive a global requantization of the carrier (rounding, `float32`).
+- **`bitghost`** never alters an existing value: it appends a few synthetic rows
+  that self-identify through an HMAC tag and carry the message in their low mantissa
+  bits. It is the only algorithm that survives editing **every real row**, but it
+  injects fabricated records into the dataset.
+
+Both pick the carrier column automatically (first numeric column by name) or take
+an explicit `column=` (Python) / `-c` (CLI).
+
+```python
+# shuffle-resistant watermark
+new_df = steganodf.encode(df, b"made by steganodf", algorithm="bitvote")
+message = steganodf.decode(new_df.sample(fraction=1, shuffle=True), algorithm="bitvote")
+```
+
 ## How much data can I hide?
 
 The payload is written as packets of `header + data + crc + correction` bytes, each
@@ -84,8 +119,10 @@ and a single surviving packet is enough to recover the whole message.
 
 ## Limitations
 
-- The message lives in the **order of the rows**. Sorting, deduplicating or
-  repartitioning the dataset erases it — no password needed, no data lost.
+- With the default `bitpool` the message lives in the **order of the rows**.
+  Sorting, deduplicating or repartitioning the dataset erases it — no password
+  needed, no data lost. Use `bitvote` or `bitghost` (see
+  [Algorithms](#algorithms)) for a shuffle-resistant watermark.
 - The row fingerprint survives a **reordering of the columns** (they are sorted by
   name before hashing, disable with `sort_columns=False`), but **adding, removing
   or renaming** a column still erases the message.

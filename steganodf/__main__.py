@@ -61,6 +61,13 @@ def parse_cli(args=None) -> argparse.Namespace:
         subparser.add_argument("input", type=ap_input_file, help="Input file")
         subparser.add_argument("--password", "-p", type=str, required=False, help="Password to use")
         subparser.add_argument(
+            "--column",
+            "-c",
+            type=str,
+            required=False,
+            help="Name of the carrier column (bitvote/bitghost only)",
+        )
+        subparser.add_argument(
             "--algorithm",
             "-a",
             type=str,
@@ -91,17 +98,25 @@ def parse_cli(args=None) -> argparse.Namespace:
 def main():
     args = parse_cli()
 
+    # `column` is only accepted by the alteration algorithms, so forward it
+    # only when the user set it (bitpool would reject an unexpected argument).
+    extra = {"column": args.column} if args.column else {}
+
     if args.command == "encode":
 
         df = read_file(args.input)
         new_df = st.encode(
-            df, payload=args.message.encode(), algorithm=args.algorithm, password=args.password
+            df,
+            payload=args.message.encode(),
+            algorithm=args.algorithm,
+            password=args.password,
+            **extra,
         )
         write_file(new_df, args.output)
 
     elif args.command == "decode":
         df = read_file(args.input)
-        payload = st.decode(df, algorithm=args.algorithm, password=args.password)
+        payload = st.decode(df, algorithm=args.algorithm, password=args.password, **extra)
         if not payload:
             print(
                 f"No message could be decoded from {args.input}. "
