@@ -25,6 +25,10 @@ A packet is composed as follow :
  |   12 bytes   |       20 bytes      | 4 b  | 10 bytes          |
  +--------------+----------------------------+-------------------+
 
+The header and data are scrambled with a pad derived from the packet's own
+blockseed before the CRC and correction code are computed, so that every packet
+consumes the pool queues uniformly (see scramble_block). The packet is then
+written as a continuous bit stream, bit_per_row bits per row.
 """
 
 
@@ -49,7 +53,10 @@ class BitPool(PermutationAlgorithm):
         Initialize an instance of PermutationAlgorithm
 
         Args:
-            bit_per_row (int): Number of bits per line. Default is 1.
+            bit_per_row (int): Number of bits per line, between 1 and 16. Default is 1.
+                The practical upper bound is set by the dataframe: each of the
+                2**bit_per_row hash values must occur often enough, which caps it
+                around log2(row_count) - 3.
             data_size (int): Data size of the packet in byte. Defaut is 20.
             correction_size (int): Correction size of the packet in byte. Default is 10.
             hash_function (Callable): Hash function to use. Default is MD5.
@@ -76,8 +83,8 @@ class BitPool(PermutationAlgorithm):
         # Read also in reverse
         self._reverse_reading = reverse_reading
 
-        if self._bit_per_row not in (1, 2, 4):
-            raise AlgorithmError("bit_per_row must be 1,2 or 4")
+        if not 1 <= self._bit_per_row <= 16:
+            raise AlgorithmError("bit_per_row must be between 1 and 16")
 
     def hash(self, text: str) -> int:
         """
@@ -104,15 +111,41 @@ class BitPool(PermutationAlgorithm):
         else:
             hash = self._hash_function(text.encode())
 
-        digest = hash.digest()[0]
-        digest = digest >> (8 - self._bit_per_row)
-        return digest
+        nbytes = (self._bit_per_row + 7) // 8
+        digest = int.from_bytes(hash.digest()[:nbytes], "big")
+        return digest >> (nbytes * 8 - self._bit_per_row)
 
     def get_packet_size(self) -> int:
         """
         Return size of a complete packet
         """
         return self._header_size + self._data_size + self._crc_size + self._correction_size
+
+    def scramble_block(self, block: bytes) -> bytes:
+        """
+        XOR the whole block with a pad derived from its own blockseed field
+        (bytes 8 to 11), which changes with every packet. The seed field itself is
+        left in clear so the decoder can regenerate the pad. The operation is its
+        own inverse.
+
+        Without it, packets repeat themselves: the header fields (filesize,
+        blocksize) are identical in every packet, and with a small payload the data
+        field only takes a handful of values (XORs of a few source blocks). Repeated
+        bytes always consume the same pool queues, and the smallest of those queues
+        caps the number of packets that fit — the limiting factor at high
+        bit_per_row values. Scrambling makes every packet pseudo-random, so the
+        queues are consumed uniformly.
+        """
+        pad = b""
+        counter = 0
+        while len(pad) < len(block):
+            pad += hashlib.sha256(block[8:12] + counter.to_bytes(4, "big")).digest()
+            counter += 1
+        return (
+            bytes(a ^ b for a, b in zip(block[:8], pad))
+            + block[8:12]
+            + bytes(a ^ b for a, b in zip(block[12:], pad[12:]))
+        )
 
     def get_max_theoretical_payload_size(self, df: pl.DataFrame) -> int:
         """
@@ -144,6 +177,9 @@ class BitPool(PermutationAlgorithm):
         # The LT fountain needs noticeably more encoded blocks than source blocks to
         # converge, and the sliding window at decoding time cannot use the very last
         # rows of the file. The divisor is an empirical safety margin, not a bound.
+        # Near bit_per_row = log2(row_count) the pool queues hold only a few rows
+        # each and exhaustion dominates: this estimate then becomes optimistic, so
+        # verify with a decode. Full capacity needs bit_per_row <= log2(row_count)-4.
         estimate_size = int(max_size // 4)
         return estimate_size
 
@@ -215,7 +251,7 @@ class BitPool(PermutationAlgorithm):
         Return line count required for N bytes
         """
 
-        return len(data) * 8 // self._bit_per_row
+        return (len(data) * 8 + self._bit_per_row - 1) // self._bit_per_row
 
     def _encode(self, df: pl.DataFrame, payload: bytes) -> Tuple[pl.DataFrame, int]:
         """
@@ -245,6 +281,7 @@ class BitPool(PermutationAlgorithm):
         lt_seed = self._random.randint(0, (1 << 31) - 2)
         for block in lt.encode.encoder(data, self._data_size, seed=lt_seed):
 
+            block = self.scramble_block(block)
             # Add CRC code
             crc = binascii.crc32(block).to_bytes(self._crc_size, "big")
             block += crc
@@ -263,7 +300,8 @@ class BitPool(PermutationAlgorithm):
             block_count += 1
 
         if block_count == 0:
-            required = self.get_packet_size() * 8 // self._bit_per_row
+            packet_bits = self.get_packet_size() * 8
+            required = (packet_bits + self._bit_per_row - 1) // self._bit_per_row
             raise AlgorithmError(
                 f"Not a single {self.get_packet_size()} bytes packet could be encoded. "
                 f"At bit_per_row={self._bit_per_row} a packet spans {required} rows, and the "
@@ -302,28 +340,33 @@ class BitPool(PermutationAlgorithm):
         rsc = RSCodec(self._correction_size) if self._correction_size > 0 else None
         decoder = lt.decode.LtDecoder()
 
-        window = (self.get_packet_size()) * 8 // self._bit_per_row
+        packet_size = self.get_packet_size()
+        window = (packet_size * 8 + self._bit_per_row - 1) // self._bit_per_row
         success = False
         valid_blocks = 0
-        for i in range(0, len(hash) - window):
+        for i in range(0, len(hash) - window + 1):
             chunk = hash[i : i + window]
-            block = self.decode_chunk(chunk)
+            # The window is rounded up in rows, so drop the padding bytes
+            block = self.decode_chunk(chunk)[:packet_size]
 
             try:
                 packet = rsc.decode(block)[0] if rsc is not None else block
             except Exception:
                 continue
 
-            # The LT header is (filesize, blocksize, blockseed); see lt/encode/__init__.py
-            filesize, blocksize, blockseed = unpack("!III", packet[: self._header_size])
-            data = packet[self._header_size : -self._crc_size]
-
             crc = packet[-self._crc_size :]
             read_crc = binascii.crc32(packet[: -self._crc_size]).to_bytes(self._crc_size, "big")
 
+            # The CRC covers the scrambled block; unscramble only after checking it
+            body = self.scramble_block(packet[: -self._crc_size])
+
+            # The LT header is (filesize, blocksize, blockseed); see lt/encode/__init__.py
+            filesize, blocksize, blockseed = unpack("!III", body[: self._header_size])
+            data = body[self._header_size :]
+
             if blocksize == len(data) and crc == read_crc:
                 valid_blocks += 1
-                stream = io.BytesIO(packet)
+                stream = io.BytesIO(body)
                 header = lt.decode._read_header(stream)
                 block = lt.decode._read_block(header[1], stream)
                 decoder.consume_block((header, block))
@@ -396,9 +439,17 @@ class BitPool(PermutationAlgorithm):
         Encode a chunk of bytes in row permutation.
         This methods consumes bytes from the pool and return row indexes.
 
+        The chunk is read as one continuous bit stream, least significant bit
+        of each byte first, cut into groups of `bit_per_row` bits. A group may
+        straddle two bytes, so `bit_per_row` does not need to divide 8; the
+        last group is zero-padded.
+
         >>> algo = BitPool(bit_per_row=2)
         >>> algo.encode_chunk(b'hi', {0:[1,3,4,12,13,14,15,16], 1:[0,2,5,17,18,19], 2:[6,7,8,20,21,22], 3:[9,10,11,23,24]})
         [1, 6, 7, 0, 2, 8, 20, 5]
+        >>> algo = BitPool(bit_per_row=3)
+        >>> algo.encode_chunk(b'h', {0:[10], 1:[11], 2:[], 3:[], 4:[], 5:[12], 6:[], 7:[]})
+        [10, 12, 11]
         """
 
         # List of row indexes to returnes
@@ -407,20 +458,15 @@ class BitPool(PermutationAlgorithm):
             indexes = [0] * (2**self._bit_per_row)
 
         rows = []
-        for byte in chunk:
-            # For each bytes, extract bit to use for encoding
-            # For example, using bit_per_row=2, split 1 bytes into 4 part
-            # 00101101 ==> 00 , 10, 11, 01 ==> 0, 2, 3, 1
-
-            mask = 2 ** (self._bit_per_row) - 1
-            for i in range(0, 8, self._bit_per_row):
-                m = mask << i
-                v = (byte & m) >> i
-                try:
-                    rows.append(pool[v][indexes[v]])
-                    indexes[v] += 1
-                except Exception:
-                    raise NotEnoughBitException("Not enough bits to encode data ")
+        bits = int.from_bytes(chunk, "little")
+        mask = 2 ** (self._bit_per_row) - 1
+        for pos in range(0, len(chunk) * 8, self._bit_per_row):
+            v = (bits >> pos) & mask
+            try:
+                rows.append(pool[v][indexes[v]])
+                indexes[v] += 1
+            except Exception:
+                raise NotEnoughBitException("Not enough bits to encode data ")
         return rows
 
     def decode_chunk(self, hashes: List[int]) -> bytes:
@@ -430,19 +476,18 @@ class BitPool(PermutationAlgorithm):
         Args:
             hashes(list): the hash list comming from the hash column in encoded dataframe
 
+        >>> algo = BitPool(bit_per_row=3)
+        >>> algo.decode_chunk([0, 5, 1])
+        b'h'
         """
-        data = bytearray()
-        chunk_size = 8 // self._bit_per_row
+        bits = 0
+        for i, value in enumerate(hashes):
+            bits |= value << (i * self._bit_per_row)
 
-        for i in range(0, len(hashes), chunk_size):
-            chunk = hashes[i : i + chunk_size]
-            byte = 0
-            for j, val in enumerate(chunk):
-                shift = self._bit_per_row * (j + 1) - self._bit_per_row
-                byte |= val << shift
-            data.append(byte)
-
-        return data
+        # Keep complete bytes only, dropping the trailing padding bits
+        nbytes = len(hashes) * self._bit_per_row // 8
+        bits &= (1 << (nbytes * 8)) - 1
+        return bits.to_bytes(nbytes, "little")
 
     def get_data_size_available(self, df: pl.DataFrame) -> int:
         """

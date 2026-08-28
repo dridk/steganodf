@@ -61,6 +61,13 @@ packet is 46 bytes, so the dataframe needs **at least 368 rows** to hold anythin
 all (184 rows with `bit_per_row=2`, 92 with `bit_per_row=4`). `encode` raises an
 `AlgorithmError` when the dataframe is too small.
 
+`bit_per_row` can be any value from 1 to 16: the packets are written as a
+continuous bit stream, so it does not need to divide 8. Each row carries
+`bit_per_row` bits, but each of the `2**bit_per_row` hash values must occur often
+enough in the dataframe, which caps the useful range around
+`log2(row_count) - 4` (e.g. `bit_per_row=8` for 10 000 rows, an ~8x capacity
+gain over the default).
+
 ```python
 from steganodf.algorithms import BitPool
 

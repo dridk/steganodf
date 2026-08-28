@@ -167,14 +167,28 @@ bit/ligne) est donc dominé par ce qui est déjà implémenté à `bit_per_row=2
 que la suppression de la fenêtre glissante en `O(n)` au décodage — un gain de temps de
 calcul, pas de capacité.
 
-### Non retenue mais recommandée : `bit_per_row` libre
+### Implémentée : `bit_per_row` libre par flux de bits
 
-La contrainte `bit_per_row ∈ {1, 2, 4}` (`bitpool.py`) ne vient que du découpage
-octet-par-octet de `encode_chunk` / `decode_chunk`. Un simple flux de bits autoriserait
-`b` quelconque. L'épuisement de la file la plus petite coûte environ
-`c·√(n · 2^b)` lignes, ce qui laisse `b ≲ log2(n) − 3`, soit ~10 bits/ligne sur
-10 000 lignes — proche de la borne de 11,85. **C'est de loin le meilleur rapport
-gain/effort pour la capacité.**
+La contrainte `bit_per_row ∈ {1, 2, 4}` ne venait que du découpage octet-par-octet
+de `encode_chunk` / `decode_chunk`. Les paquets sont désormais écrits comme un
+**flux de bits continu** (un groupe de `b` bits peut chevaucher deux octets) :
+`b` est libre de 1 à 16 (au-delà, le pool de `2^b` files coûterait plus de
+mémoire que le DataFrame lui-même, pour un gain nul en pratique).
+
+L'implémentation a révélé un second verrou, invisible dans l'analyse théorique :
+les octets **répétés d'un paquet à l'autre** (l'en-tête LT constant, et les données
+elles-mêmes quand la payload est petite — le champ data ne prend que `2^K − 1`
+valeurs) consomment toujours les *mêmes* files du pool, et la plus petite d'entre
+elles (~`n/2^b` lignes) plafonnait le nombre de paquets à une poignée dès `b = 10`.
+Chaque paquet est donc **brouillé** (XOR avec un pad dérivé de son propre
+`blockseed`, seul champ variant — `scramble_block`) avant CRC et Reed-Solomon, ce
+qui rend la consommation des files uniforme. Ce brouillage profite aussi aux petits
+`b` (capacité réelle mesurée à `b=4` : 1 144 → 1 505 octets sur 10 000 lignes).
+
+Capacité réelle mesurée (10 000 lignes, recherche dichotomique du plus grand
+payload décodable) : 360 o à `b=1`, 1 505 o à `b=4`, **1 579 o à `b=8`** ; au-delà
+(`b ≥ 10`) l'épuisement des files domine, conformément à la borne
+`b ≲ log2(n) − 3`. Le plein rendement demande `b ≲ log2(n) − 4`.
 
 ### Autres pistes documentées
 
