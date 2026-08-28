@@ -6,8 +6,10 @@ from reedsolo import RSCodec
 import hmac
 from struct import unpack
 import io
+import math
 import random
 import binascii
+from collections import Counter
 from steganodf.algorithms.algorithm import AlgorithmError
 from steganodf.algorithms.permutation_algorithm import PermutationAlgorithm
 from steganodf import lt
@@ -169,52 +171,76 @@ class BitPool(PermutationAlgorithm):
         max_size = (self.get_total_size_available(df) * self._data_size) // self.get_packet_size()
         return max_size
 
-    def simulate_packet_count(self, df: pl.DataFrame, trials: int = 20) -> int:
+    @staticmethod
+    def _log_poisson_cdf(s: int, lam: float) -> float:
         """
-        Estimate how many packets fit in the dataframe before a pool queue runs dry.
+        Return log(P(Poisson(lam) <= s)), computed in log space to avoid underflow.
+        """
+        if lam <= 0:
+            return 0.0
+        log_term = -lam  # k = 0
+        total = log_term
+        for k in range(1, s + 1):
+            log_term += math.log(lam) - math.log(k)
+            high = max(total, log_term)
+            total = high + math.log(math.exp(total - high) + math.exp(log_term - high))
+        return min(total, 0.0)
+
+    def estimate_packet_count(self, df: pl.DataFrame, confidence: float = 0.95) -> int:
+        """
+        Compute how many packets fit in the dataframe before a pool queue runs dry.
 
         Thanks to the packet scrambling the written symbols are uniformly
-        distributed, so writing can be simulated by drawing random symbols against
-        the real queue sizes of the dataframe — no encoding needed. The worst of
-        `trials` seeded simulations is returned, as a conservative figure.
+        distributed, so after t symbols each of the 2**bit_per_row queues has
+        received a Poisson(t / 2**bit_per_row) number of hits. A queue of size s
+        survives with probability P(Poisson <= s), and the whole encoding survives
+        with the product of those probabilities over the real queue sizes of the
+        dataframe. The returned packet count is the largest t (found by binary
+        search) for which this survival probability stays above `confidence` —
+        a fully deterministic computation, no sampling involved.
 
         Args:
             df (pl.DataFrame) : The cover dataframe
-            trials (int): Number of simulations. Default is 20.
+            confidence (float): Survival probability the estimate guarantees under
+                the Poisson model. Default is 0.95.
 
         Returns:
             The packet count
         """
         pool_count = 2**self._bit_per_row
-        sizes = [0] * pool_count
-        for value, count in self.compute_hash(df)["hash"].value_counts().iter_rows():
-            sizes[value] = count
+        sizes = [count for _, count in self.compute_hash(df)["hash"].value_counts().iter_rows()]
+        size_frequency = Counter(sizes)
+        # hash values that never occur in the dataframe are empty queues
+        size_frequency[0] += pool_count - len(sizes)
+
+        log_confidence = math.log(confidence)
+
+        def survives(t: int) -> bool:
+            lam = t / pool_count
+            total = 0.0
+            for size, frequency in size_frequency.items():
+                total += frequency * self._log_poisson_cdf(size, lam)
+                if total < log_confidence:
+                    return False
+            return True
+
+        lo, hi = 0, len(df)
+        while lo < hi:
+            mid = (lo + hi + 1) // 2
+            if survives(mid):
+                lo = mid
+            else:
+                hi = mid - 1
 
         symbols_per_packet = (self.get_packet_size() * 8 + self._bit_per_row - 1) // self._bit_per_row
-        rng = random.Random(0)
-        worst = None
-        for _ in range(trials):
-            remaining = sizes.copy()
-            packets = 0
-            exhausted = False
-            while not exhausted:
-                for _ in range(symbols_per_packet):
-                    value = rng.randrange(pool_count)
-                    if remaining[value] == 0:
-                        exhausted = True
-                        break
-                    remaining[value] -= 1
-                else:
-                    packets += 1
-            worst = packets if worst is None else min(worst, packets)
-        return worst
+        return lo // symbols_per_packet
 
     def get_max_payload_size(self, df: pl.DataFrame) -> int:
         """
         Return an empirical estimation of the maximum payload size.
 
-        The packet count is simulated against the real pool of the dataframe (see
-        `simulate_packet_count`), so the estimate accounts for queue exhaustion at
+        The packet count is computed against the real pool of the dataframe (see
+        `estimate_packet_count`), so the estimate accounts for queue exhaustion at
         high bit_per_row values. The LT fountain then needs noticeably more encoded
         packets than source blocks to converge, and the sliding window at decoding
         time cannot use the very last rows of the file: the division by 3 is an
@@ -228,7 +254,7 @@ class BitPool(PermutationAlgorithm):
             The size in bytes
 
         """
-        packets = self.simulate_packet_count(df)
+        packets = self.estimate_packet_count(df)
         return packets * self._data_size // 3
 
     def compute_hash(self, df: pl.DataFrame) -> pl.DataFrame:
