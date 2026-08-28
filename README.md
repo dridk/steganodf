@@ -43,14 +43,42 @@ steganodf decode stegano.csv -p password
 import steganodf 
 import polars as pl
  
-df = pl.read_csv("https://gist.githubusercontent.com/netj/8836201/raw/6f9306ad21398ea43cba4f7d537619d0e07d5ae3/iris.csv")
+df = pl.read_parquet("my_dataset.parquet")
 
-new_df = steganodf.encode(df, "made by steganodf", password="secret")
+# The payload is bytes, not str
+new_df = steganodf.encode(df, b"made by steganodf", password="secret")
 
-# Extract your message 
-message = steganodf.decode(df, password="secret")
+# Extract your message from the watermarked dataframe
+message = steganodf.decode(new_df, password="secret")
 
 ```
+
+## How much data can I hide?
+
+The payload is written as packets of `header + data + crc + correction` bytes, each
+packet spanning `packet_size * 8 / bit_per_row` rows. With the default settings a
+packet is 46 bytes, so the dataframe needs **at least 368 rows** to hold anything at
+all (184 rows with `bit_per_row=2`, 92 with `bit_per_row=4`). `encode` raises an
+`AlgorithmError` when the dataframe is too small.
+
+```python
+from steganodf.algorithms import BitPool
+
+algorithm = BitPool(bit_per_row=2, password="secret")
+algorithm.get_max_payload_size(df)   # safe payload size, in bytes
+```
+
+`decode` returns empty bytes when no complete message could be recovered. Use
+`BitPool.decode_details(df)` to tell "no watermark" apart from a successful read.
+
+## Limitations
+
+- The message lives in the **order of the rows**. Sorting, deduplicating or
+  repartitioning the dataset erases it — no password needed, no data lost.
+- The row fingerprint is computed from the concatenation of the columns **in their
+  current order**, so reordering, adding or renaming columns also erases it.
+- Without a `password` the fingerprint is a plain MD5: anyone can read the message
+  and rewrite their own.
 
 ## Citation
 Sacha Schutz, Meganne Souprayen. Watermark tabular datasets with rows permutations and fountain code. TechRxiv. April 28, 2025.

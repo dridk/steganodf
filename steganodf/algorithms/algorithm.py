@@ -8,7 +8,12 @@ class AlgorithmError(Exception):
 class Algorithm:
 
     def __init__(self, **kwargs):
-        pass 
+        # Subclasses forward the keyword arguments they did not consume. Anything
+        # reaching this point is a typo or an option that does not exist: fail loudly
+        # instead of silently ignoring it.
+        if kwargs:
+            unexpected = ", ".join(sorted(kwargs))
+            raise AlgorithmError(f"Unexpected argument(s) for {self.name()}: {unexpected}")
 
     @classmethod
     def name(cls):

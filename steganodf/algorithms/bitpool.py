@@ -6,7 +6,6 @@ from reedsolo import RSCodec
 import hmac
 from struct import unpack
 import io
-import copy
 import random
 import binascii
 from steganodf.algorithms.algorithm import AlgorithmError
@@ -43,6 +42,7 @@ class BitPool(PermutationAlgorithm):
         hash_function: Callable = hashlib.md5,
         password: str = None,
         reverse_reading: bool = False,
+        seed: int = None,
         **kwargs,
     ):
         """
@@ -55,12 +55,16 @@ class BitPool(PermutationAlgorithm):
             hash_function (Callable): Hash function to use. Default is MD5.
             password (str, optional) : Password used for hashing function with a HMAC algorithm.
             reverse_reading (bool): Read the dataframe also in the reverse direction. It doubles the computation time.
+            seed (int, optional): Seed of the random generator used at encoding time. Encoding
+                is random by default; setting a seed makes it reproducible. Decoding never
+                depends on it.
         """
         super().__init__(**kwargs)
 
         self._hash_function = hash_function
         self._password = password
         self._bit_per_row = bit_per_row
+        self._random = random.Random(seed)
 
         self._data_size = data_size
         self._correction_size = correction_size
@@ -122,7 +126,7 @@ class BitPool(PermutationAlgorithm):
             The size in bytes
 
         """
-        max_size = (self.get_total_size_available(df) * self._data_size) / (self.get_packet_size())
+        max_size = (self.get_total_size_available(df) * self._data_size) // self.get_packet_size()
         return max_size
 
     def get_max_payload_size(self, df: pl.DataFrame) -> int:
@@ -137,14 +141,11 @@ class BitPool(PermutationAlgorithm):
 
         """
         max_size = self.get_max_theoretical_payload_size(df)
-        estimate_size = int(max_size // 3)
+        # The LT fountain needs noticeably more encoded blocks than source blocks to
+        # converge, and the sliding window at decoding time cannot use the very last
+        # rows of the file. The divisor is an empirical safety margin, not a bound.
+        estimate_size = int(max_size // 4)
         return estimate_size
-
-    def find_packet(self, df: pl.DataFrame, max_window=100) -> Tuple[int, int, int]:
-        """
-        TODO
-        """
-        pass
 
     def compute_hash(self, df: pl.DataFrame) -> pl.DataFrame:
         """
@@ -195,8 +196,6 @@ class BitPool(PermutationAlgorithm):
         for i, v in enumerate(hashes):
             pool[v].append(i)
 
-        # for key in pool.keys():
-        #     random.shuffle(pool[key])
         return pool
 
     def get_remaining_indexes(self, pool: Dict[int, int], indexes: List[int] = None) -> List[int]:
@@ -208,7 +207,7 @@ class BitPool(PermutationAlgorithm):
             i = indexes[k]
             rows += v[i:]
 
-        random.shuffle(rows)
+        self._random.shuffle(rows)
         return rows
 
     def bytes_to_rows_count(self, data: bytes) -> int:
@@ -239,18 +238,18 @@ class BitPool(PermutationAlgorithm):
         new_df = self.compute_hash(df)
         pool = self.create_pool(new_df["hash"].to_list())
         rows = []
-        rsc = RSCodec(self._correction_size)
+        rsc = RSCodec(self._correction_size) if self._correction_size > 0 else None
         data = io.BytesIO(payload)
         block_count = 0
-        valid_blocks = []
         encode_indexes = [0] * 2 ** (self._bit_per_row)
-        for i, block in enumerate(lt.encode.encoder(data, self._data_size)):
+        lt_seed = self._random.randint(0, (1 << 31) - 2)
+        for block in lt.encode.encoder(data, self._data_size, seed=lt_seed):
 
             # Add CRC code
-            crc = binascii.crc32(block).to_bytes(self._crc_size)
+            crc = binascii.crc32(block).to_bytes(self._crc_size, "big")
             block += crc
             # Add reed solomon error corection code
-            if self._correction_size > 0:
+            if rsc is not None:
                 block = rsc.encode(block)
 
             old_indexes = encode_indexes.copy()
@@ -262,7 +261,16 @@ class BitPool(PermutationAlgorithm):
 
             rows += bloc_rows
             block_count += 1
-            valid_blocks.append(block)
+
+        if block_count == 0:
+            required = self.get_packet_size() * 8 // self._bit_per_row
+            raise AlgorithmError(
+                f"Not a single {self.get_packet_size()} bytes packet could be encoded. "
+                f"At bit_per_row={self._bit_per_row} a packet spans {required} rows, and the "
+                f"dataframe has {len(df)} — each of the {2 ** self._bit_per_row} hash values "
+                "must also occur often enough. Lower correction_size/data_size, raise "
+                "bit_per_row, or use a larger dataframe."
+            )
 
         remains = self.get_remaining_indexes(pool, encode_indexes)
         rows += remains
@@ -291,37 +299,30 @@ class BitPool(PermutationAlgorithm):
 
         hash = new_df["hash"].to_list()
 
-        rsc = RSCodec(self._correction_size)
+        rsc = RSCodec(self._correction_size) if self._correction_size > 0 else None
         decoder = lt.decode.LtDecoder()
 
         window = (self.get_packet_size()) * 8 // self._bit_per_row
         success = False
-        valid_blocks = []
-        count = 0
+        valid_blocks = 0
         for i in range(0, len(hash) - window):
             chunk = hash[i : i + window]
             block = self.decode_chunk(chunk)
 
             try:
-                if self._correction_size > 0:
-                    packet = rsc.decode(block)[0]
-                else:
-                    packet = block
+                packet = rsc.decode(block)[0] if rsc is not None else block
             except Exception:
                 continue
 
-            header = packet[:12]
-            data = packet[12:-4]
-            # Check header
+            # The LT header is (filesize, blocksize, blockseed); see lt/encode/__init__.py
+            filesize, blocksize, blockseed = unpack("!III", packet[: self._header_size])
+            data = packet[self._header_size : -self._crc_size]
 
-            crc = packet[-4:]
-            read_crc = binascii.crc32(packet[:-4]).to_bytes(self._crc_size)
+            crc = packet[-self._crc_size :]
+            read_crc = binascii.crc32(packet[: -self._crc_size]).to_bytes(self._crc_size, "big")
 
-            block_count, data_size, uuid = unpack("!III", header)
-
-            if data_size == len(data) and crc == read_crc:
-                valid_blocks.append(packet)
-                count += 1
+            if blocksize == len(data) and crc == read_crc:
+                valid_blocks += 1
                 stream = io.BytesIO(packet)
                 header = lt.decode._read_header(stream)
                 block = lt.decode._read_block(header[1], stream)
@@ -331,12 +332,12 @@ class BitPool(PermutationAlgorithm):
                     success = True
                     break
 
-        if count == 0:
-            payload = b""
-        else:
-            payload = decoder.bytes_dump()
+        # A partially filled LT decoder cannot produce a partial message: its
+        # `bytes_dump` would silently concatenate the blocks it did resolve, yielding
+        # shifted, corrupted output. Only dump it once belief propagation converged.
+        payload = decoder.bytes_dump() if success else b""
 
-        return {"payload": payload, "success": success, "block_count": len(valid_blocks)}
+        return {"payload": payload, "success": success, "block_count": valid_blocks}
 
     def encode(self, df: pl.DataFrame, payload: bytes) -> pl.DataFrame:
         """
@@ -358,13 +359,35 @@ class BitPool(PermutationAlgorithm):
 
         Args:
             df(pl.DataFrame): The host dataframe
-            payload(bytes): the payload message to hide in the host dataframe
 
         Return:
-            Return the payload in bytes
+            Return the payload in bytes, or an empty bytes object if no complete
+            message could be recovered. Use `decode_details` to know which one it is.
+        """
+        result = self.decode_details(df)
+        return result["payload"]
+
+    def decode_details(self, df: pl.DataFrame) -> Dict:
+        """
+        Decode the payload and report how the decoding went.
+
+        Args:
+            df(pl.DataFrame): The host dataframe
+
+        Return:
+            A dict with the `payload` (bytes), whether the message was fully
+            reconstructed (`success`), and how many valid packets were read
+            (`block_count`).
         """
         result = self._decode(df)
-        return result["payload"]
+        if not result["success"]:
+            logging.warning(
+                "No complete message could be decoded (%d valid packet(s) read). "
+                "The dataframe may not be watermarked, the password may be wrong, "
+                "or the rows may have been reordered.",
+                result["block_count"],
+            )
+        return result
 
     def encode_chunk(
         self, chunk: bytes, pool: Dict[int, List[int]], indexes: List[int] = None

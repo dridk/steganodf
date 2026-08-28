@@ -14,11 +14,11 @@ SUPPORTED_FORMATS_IO = {
 
 
 def get_supported_input_format():
-    return tuple(i for i, _ in SUPPORTED_FORMATS_IO if i and callable(i))
+    return tuple(suffix for suffix, (reader, _) in SUPPORTED_FORMATS_IO.items() if callable(reader))
 
 
 def get_supported_output_format():
-    return tuple(o for _, o in SUPPORTED_FORMATS_IO if o and callable(o))
+    return tuple(suffix for suffix, (_, writer) in SUPPORTED_FORMATS_IO.items() if callable(writer))
 
 
 def read_file(path: Path) -> pl.DataFrame:
@@ -101,8 +101,19 @@ def main():
 
     elif args.command == "decode":
         df = read_file(args.input)
-        print(st.decode(df, algorithm=args.algorithm, password=args.password).decode())
+        payload = st.decode(df, algorithm=args.algorithm, password=args.password)
+        if not payload:
+            print(
+                f"No message could be decoded from {args.input}. "
+                "The file may not be watermarked, the password may be wrong, "
+                "or the rows may have been reordered.",
+                file=sys.stderr,
+            )
+            return 1
+        print(payload.decode())
+
+    return 0
 
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())
