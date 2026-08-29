@@ -130,3 +130,11 @@ into an HMAC and is what makes the watermark yours. Note that the CRC32 in every
 integrity check, not a MAC — it detects accidental damage, not a deliberate forgery. And a
 permutation watermark is detectable in one specific case: if the dataset you started from was
 sorted, the watermarked copy no longer is.
+
+The `auto` decoding mode (`steganodf.try_decode`, `steganodf decode -a auto`) makes it a one-liner
+to ask "is this file watermarked at all?" without a password. This does not weaken anything that
+was protected before — the same answer was already four commands away, and a password-protected
+message stays unreadable — but it is worth knowing that the algorithm itself is not a secret.
+Trying four algorithms instead of one also multiplies by four the chance of accepting a wrong
+decoding on a CRC32 collision, which stays around `row_count / 2**32` in the least favourable case
+(`bitpool`, which tests one window per row).

@@ -119,6 +119,33 @@ BitVote(data_size=260, password="secret")     # 255 B instead of 19 B
 BitGhost(redundancy=32, password="secret")    # tolerates 80 % of rows being deleted
 ```
 
+### Decoding without knowing the algorithm
+
+If you receive a watermarked dataframe without being told which algorithm wrote it, pass
+`algorithm="auto"`. Every algorithm validates what it reads with a CRC32, so one that was not
+used to encode reports a failure rather than returning garbage; steganodf tries them in turn and
+stops at the first success.
+
+```python
+steganodf.decode(df, algorithm="auto", password="secret")   # b'made by steganodf'
+```
+
+`try_decode` does the same thing but also tells you which algorithm matched:
+
+```python
+steganodf.try_decode(df, password="secret")
+# {'payload': b'made by steganodf', 'success': True, 'votes': 100000,
+#  'margin_min': 469, 'algorithm': 'bitvote', 'tried': ['bitvote']}
+```
+
+Only the **default** parameters are tried. `bit_per_row`, `data_size` and `redundancy` must match
+between encoding and decoding and cannot be guessed, so a dataframe watermarked with
+`BitPool(bit_per_row=8)` will not be found by auto decoding — but everything the command line
+produces will, since it always uses the defaults. The password is not guessed either.
+
+The candidates are tried cheapest first (`bitvote`, `bitghost`, `bitpool`, `bitsync`), so the slow
+ones only run once the fast ones have failed.
+
 ### From the command line
 
 ```bash
@@ -134,6 +161,9 @@ steganodf decode stegano.csv -p password
 # Choosing an algorithm, and the carrier column for bitvote / bitghost
 steganodf encode -m hello -a bitvote -c price host.csv stegano.csv
 steganodf decode -a bitvote -c price stegano.csv
+
+# Decoding without knowing the algorithm: tries all four, names the one that matched
+steganodf decode -a auto stegano.csv
 ```
 
 The CLI reads and writes `.csv` and `.parquet`, and exposes `--password`, `--column` and

@@ -25,4 +25,14 @@ class Algorithm:
     def decode(self, df: pl.DataFrame) -> bytes:
         raise NotImplementedError()
 
+    def decode_details(self, df: pl.DataFrame) -> dict:
+        """
+        Decode and report how the decoding went, as a dict with at least the
+        `payload` (bytes) and whether it was fully recovered (`success`).
+        Algorithms add their own diagnostic keys. This is what tells "no
+        watermark" apart from "an empty message", and what `steganodf.try_decode`
+        relies on to recognise the algorithm a dataframe was encoded with.
+        """
+        raise NotImplementedError()
+
     
