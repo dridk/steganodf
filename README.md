@@ -1,149 +1,163 @@
-
-# Steganodf 
+# Steganodf
 
 [![PyPi Version](https://img.shields.io/pypi/v/steganodf.svg)](https://pypi.python.org/pypi/steganodf/)
-[![PyPi Python Versions](https://img.shields.io/pypi/pyversions/yt2mp3.svg)](https://pypi.python.org/pypi/steganodf/)
+[![PyPi Python Versions](https://img.shields.io/pypi/pyversions/steganodf.svg)](https://pypi.python.org/pypi/steganodf/)
+
+**Steganodf hides a secret message inside a dataframe.**
+
+Give it a dataframe and a few bytes to hide, steganodf gives you back a dataframe that still looks and reads like the original but
+carries your secret message. Anyone with the password (or with none, if you did not set one) can read
+the message back out. Typical use: watermarking a dataset you are about to share, so that a leaked
+copy can be traced back to the recipient it was issued to.
+
+Hiding data in a table is a trade-off between three properties, and no single scheme wins on all
+three at once:
+
+- **Capacity** — how many bytes fit in the dataset.
+- **Robustness** — does the message survive what happens to data
+- **Invisibility** — how much the original data is distorted, and how easily an observer can tell
+  that a watermark is there at all.
+
+Steganodf ships **four algorithms** that sit at different points of that trade-off. 
+
+## Choosing an algorithm
+
+**The three methods:**
+
+- **permutation** — the message lives in the *order of the rows*. Nothing is written to the data
+  itself, so the dataset is bit-for-bit the same multiset of rows. The price is that any operation
+  that re-orders the table erases the message.
+- **alteration** — the message lives in the *least significant bits* of one numeric column. The
+  values change, by one unit in the last place, and the row order becomes irrelevant.
+- **synthesis** — the message lives in *extra rows* that steganodf fabricates and inserts. Existing
+  values are never touched, but the dataset gains records that were not in it.
 
 
-A steganography tool for hiding a message in a dataset, such as csv or parquet files.
+## Benchmark
 
-By default this tool hides a payload by permuting the rows of the dataset. It is tolerant
-to modification thanks to a [Reed-Solomon code](https://en.wikipedia.org/wiki/Reed%E2%80%93Solomon_error_correction) and a [Luby-s LT fontain code](https://en.wikipedia.org/wiki/Luby_transform_code).
-
-Two additional algorithms hide the message in the **cell content** instead of the
-row order, so the watermark **survives a shuffle or an `ORDER BY`** (see
-[Algorithms](#algorithms)).
-
-# Demo 
-
-You can  experiment with the Python API using this [Google Colab notebook](https://colab.research.google.com/drive/1cp0WaIOO7Xj3ObwR9vr4Nae5KSwyW61e?usp=sharing). 
+Measured on a 100 000-row, 4-column frame (`Int64`, `Utf8`, two `Float64`) with a 16-byte payload.
 
 
-# Installation 
+| Algorithm and settings | Method | Destroys original data  | Max capacity (100k rows) | Tolerates cell edits | Tolerates row deletion | Survives sorting | Invisibility |
+|---|---|---|---|---|---|---|---|
+| **`bitpool`** `bit_per_row=1`  | permutation | no — rows are only reordered | 4.4 kB | 2 % | 2 % | ❌ | perfect — not one cell changed |
+| **`bitpool`** `bit_per_row=8` | permutation | no — rows are only reordered | **29 kB** | 12 % | 20 % | ❌ | perfect — not one cell changed |
+| **`bitsync`** default `max_drift` (44 s decode) | permutation | no — rows are only reordered | 2.1 kB | 1.5 % | 4 % | ❌ | perfect — not one cell changed |
+| **`bitsync`** `max_drift=256` (5.7 s decode) | permutation | no — rows are only reordered | 2.1 kB | 2 % | 3 % | ❌ | perfect — not one cell changed |
+| **`bitvote`** `data_size=24` | alteration | 1 ULP on one numeric column | 19 B | **45 %** | **95 %** | ✅ | very high — relative change of 2.2e-16 |
+| **`bitvote`** `data_size=260` | alteration | 1 ULP on one numeric column | 255 B | 15 % | 85 % | ✅ | very high — relative change of 2.2e-16 |
+| **`bitghost`** `redundancy=8` | synthesis | +168 fabricated rows | 250 B | 18 % | 50 % | ✅ | low — the fake rows are visible |
+| **`bitghost`** `redundancy=32` | synthesis | +672 fabricated rows | 250 B | 40 % | 80 % | ✅ | low — the fake rows are visible |
 
-```
+
+## Python API
+
+### Installation
+
+```bash
 pip install steganodf
 ```
 
-# Usage 
+You can also try the library without installing anything, in this
+[Google Colab notebook](https://colab.research.google.com/drive/1cp0WaIOO7Xj3ObwR9vr4Nae5KSwyW61e?usp=sharing).
 
-## From command line 
-```bash 
-
-# Encoding 
-steganodf encode -m hello host.csv stegano.csv
-steganodf encode -m hello host.parquet stegano.parquet 
-steganodf encode -m hello -p password host.parquet stegano.parquet 
-
-# Decoding 
-steganodf decode stegano.csv
-steganodf decode stegano.csv -p password
-
-```
-
-## From Python
+### Encode and decode
 
 ```python
-import steganodf 
+import steganodf
 import polars as pl
- 
+
 df = pl.read_parquet("my_dataset.parquet")
 
 # The payload is bytes, not str
-new_df = steganodf.encode(df, b"made by steganodf", password="secret")
+watermarked = steganodf.encode(df, b"made by steganodf", password="secret")
 
 # Extract your message from the watermarked dataframe
-message = steganodf.decode(new_df, password="secret")
-
+message = steganodf.decode(watermarked, password="secret")
 ```
 
-## Algorithms
-
-Choose an algorithm with `algorithm=` (Python) or `-a` (CLI). All four share the
-same Reed-Solomon / CRC / fountain protection and the same canonical row
-fingerprint (columns sorted by name, so a column reordering is survived).
-
-| Algorithm | Where the message lives | Survives a row shuffle? | Capacity | Cost |
-|---|---|---|---|---|
-| `bitpool` (default) | Order of the rows | ❌ sorting/shuffling erases it | High | Zero distortion |
-| `bitsync` | Order of the rows, Davey-MacKay synchronized | ❌ | ~½ of bitpool | Zero distortion |
-| `bitvote` | LSB of one numeric column, majority-voted | ✅ | ~19 bytes | 1 ULP per row |
-| `bitghost` | Synthetic self-identifying rows | ✅ | ~250 bytes | Injects fake rows |
-
-- **`bitsync`** is a permutation watermark like `bitpool`, but built on the
-  Davey-MacKay construction: the packet stream is thinned out and XORed with a
-  pseudo-random watermark sequence, and the decoder re-synchronizes with a hidden
-  Markov model instead of sliding a window over every offset. A deleted or
-  inserted row costs a couple of locally corrupted bytes (repaired by
-  Reed-Solomon) instead of a whole packet, so it withstands scattered row
-  deletions, insertions of foreign rows and head/tail cropping noticeably better,
-  and decodes with a handful of Reed-Solomon attempts instead of one per row. The
-  price is the sparse code: half the capacity of `bitpool` at the same settings.
-- **`bitvote`** writes one message bit in the least significant bit of a numeric
-  carrier column, choosing the target bit and a mask from a keyed fingerprint of
-  the row's other columns. Decoding lets every row vote and takes the majority, so
-  it also shrugs off row deletion, sampling, sparse cell edits and foreign rows. It
-  does not survive a global requantization of the carrier (rounding, `float32`).
-- **`bitghost`** never alters an existing value: it appends a few synthetic rows
-  that self-identify through an HMAC tag and carry the message in their low mantissa
-  bits. It is the only algorithm that survives editing **every real row**, but it
-  injects fabricated records into the dataset.
-
-Both pick the carrier column automatically (first numeric column by name) or take
-an explicit `column=` (Python) / `-c` (CLI).
-
-```python
-# shuffle-resistant watermark
-new_df = steganodf.encode(df, b"made by steganodf", algorithm="bitvote")
-message = steganodf.decode(new_df.sample(fraction=1, shuffle=True), algorithm="bitvote")
-```
-
-## How much data can I hide?
-
-The payload is written as packets of `header + data + crc + correction` bytes, each
-packet spanning `packet_size * 8 / bit_per_row` rows. With the default settings a
-packet is 46 bytes, so the dataframe needs **at least 368 rows** to hold anything at
-all (184 rows with `bit_per_row=2`, 92 with `bit_per_row=4`). `encode` raises an
-`AlgorithmError` when the dataframe is too small.
-
-`bit_per_row` can be any value from 1 to 16: the packets are written as a
-continuous bit stream, so it does not need to divide 8. Each row carries
-`bit_per_row` bits, but each of the `2**bit_per_row` hash values must occur often
-enough in the dataframe, which caps the useful range around
-`log2(row_count) - 4` (e.g. `bit_per_row=8` for 10 000 rows, an ~8x capacity
-gain over the default).
+`decode` returns empty bytes when no complete message could be recovered. To tell "this dataframe
+carries no watermark" apart from "the watermark was read successfully", use `decode_details`:
 
 ```python
 from steganodf.algorithms import BitPool
 
-algorithm = BitPool(bit_per_row=2, password="secret")
-algorithm.get_max_payload_size(df)   # safe payload size, in bytes
+BitPool(password="secret").decode_details(df)
+# {'payload': b'made by steganodf', 'success': True, 'block_count': 1, 'mode': 'short'}
 ```
 
-A payload of at most 19 bytes (the typical watermark) is automatically written
-in a compact packet format: ~25% more redundant copies fit in the dataframe,
-and a single surviving packet is enough to recover the whole message.
+### Picking an algorithm
 
-`decode` returns empty bytes when no complete message could be recovered. Use
-`BitPool.decode_details(df)` to tell "no watermark" apart from a successful read.
+Pass `algorithm=` to `encode` and `decode`. Both sides must agree on the algorithm and on every
+parameter that affects the framing (`password`, `bit_per_row`, `data_size`, `sort_columns`…).
 
-## Limitations
+```python
+# A shuffle-resistant watermark
+watermarked = steganodf.encode(df, b"made by steganodf", algorithm="bitvote")
+shuffled = watermarked.sample(fraction=1.0, shuffle=True)
 
-- With the default `bitpool` the message lives in the **order of the rows**.
-  Sorting, deduplicating or repartitioning the dataset erases it — no password
-  needed, no data lost. Use `bitvote` or `bitghost` (see
-  [Algorithms](#algorithms)) for a shuffle-resistant watermark.
-- The row fingerprint survives a **reordering of the columns** (they are sorted by
-  name before hashing, disable with `sort_columns=False`), but **adding, removing
-  or renaming** a column still erases the message.
-- Without a `password` the fingerprint is a plain MD5: anyone can read the message
-  and rewrite their own.
+steganodf.decode(shuffled, algorithm="bitvote")   # b'made by steganodf'
+```
+
+For anything beyond the defaults, instantiate the class directly:
+
+```python
+from steganodf.algorithms import BitPool, BitSync, BitVote, BitGhost
+
+# 8 bits per row instead of 1: ~7x the capacity on a large dataframe
+algorithm = BitPool(bit_per_row=8, password="secret")
+algorithm.get_max_payload_size(df)          # conservative estimate, in bytes
+watermarked = algorithm.encode(df, b"a much longer message ...")
+```
+
+These are the tuned settings of the second row of each algorithm in the table above:
+
+```python
+BitPool(bit_per_row=8, password="secret")     # 29 kB instead of 4.4 kB
+BitSync(max_drift=256, password="secret")     # 5.7 s instead of 44 s to decode
+BitVote(data_size=260, password="secret")     # 255 B instead of 19 B
+BitGhost(redundancy=32, password="secret")    # tolerates 80 % of rows being deleted
+```
+
+### From the command line
+
+```bash
+# Encoding
+steganodf encode -m hello host.csv stegano.csv
+steganodf encode -m hello host.parquet stegano.parquet
+steganodf encode -m hello -p password host.parquet stegano.parquet
+
+# Decoding
+steganodf decode stegano.csv
+steganodf decode stegano.csv -p password
+
+# Choosing an algorithm, and the carrier column for bitvote / bitghost
+steganodf encode -m hello -a bitvote -c price host.csv stegano.csv
+steganodf decode -a bitvote -c price stegano.csv
+```
+
+The CLI reads and writes `.csv` and `.parquet`, and exposes `--password`, `--column` and
+`--algorithm`. Tuning parameters such as `bit_per_row` or `data_size` are Python-only.
+
+## Algorithms in detail
+
+[DETAIL.md](DETAIL.md) covers each algorithm in turn — what it is built on, what it is good at,
+where it breaks — plus the threat model.
 
 ## Citation
-Sacha Schutz, Meganne Souprayen. Watermark tabular datasets with rows permutations and fountain code. TechRxiv. April 28, 2025.
-DOI: 10.36227/techrxiv.174585796.61215338/v1
-[Watermark tabular datasets with rows permutations and fountain code
-computing and processing](https://www.techrxiv.org/doi/full/10.36227/techrxiv.174585796.61215338/v1)
 
+Sacha Schutz, Meganne Souprayen. *Watermark tabular datasets with rows permutations and fountain
+code.* TechRxiv. April 28, 2025. DOI:
+[10.36227/techrxiv.174585796.61215338/v1](https://www.techrxiv.org/doi/full/10.36227/techrxiv.174585796.61215338/v1)
 
-
+```bibtex
+@article{schutz2025steganodf,
+  title   = {Watermark tabular datasets with rows permutations and fountain code},
+  author  = {Schutz, Sacha and Souprayen, Meganne},
+  year    = {2025},
+  month   = {4},
+  journal = {TechRxiv},
+  doi     = {10.36227/techrxiv.174585796.61215338/v1},
+  url     = {https://www.techrxiv.org/doi/full/10.36227/techrxiv.174585796.61215338/v1}
+}
+```

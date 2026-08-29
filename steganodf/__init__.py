@@ -1,7 +1,7 @@
 import polars as pl
 
 from steganodf.algorithms.algorithm import Algorithm
-from .algorithms import ALGORITHMS, BitPool, BitVote, BitGhost
+from .algorithms import ALGORITHMS, BitPool, BitSync, BitVote, BitGhost
 
 
 def encode(df: pl.DataFrame, payload: bytes, algorithm: str = "bitpool", **kwargs) -> pl.DataFrame:
