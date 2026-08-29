@@ -43,6 +43,10 @@ from steganodf.algorithms.algorithm import Algorithm, AlgorithmError
 # (and rewritable) by anyone, like BitPool's password-less MD5 fingerprint.
 DEFAULT_KEY = b"steganodf-bitghost"
 
+# Largest payload a message can carry: the fragment index is a single byte, and
+# the length byte plus the CRC32 take the rest of the room.
+MAX_PAYLOAD_SIZE = 250
+
 
 class BitGhost(Algorithm):
 
@@ -120,6 +124,18 @@ class BitGhost(Algorithm):
             raise AlgorithmError("No Float64 column available to carry the watermark")
         return floats[0]
 
+    def get_max_payload_size(self) -> int:
+        """
+        Return the maximum payload size in bytes.
+
+        The ghost rows are appended to the frame rather than carried by it, so
+        unlike BitPool and BitSync the limit does not depend on the dataframe.
+
+        >>> BitGhost().get_max_payload_size()
+        250
+        """
+        return MAX_PAYLOAD_SIZE
+
     def _tag(self) -> int:
         """
         The secret tag a ghost's HMAC must start with, derived from the key.
@@ -157,10 +173,10 @@ class BitGhost(Algorithm):
         return self._prefix(self._primed().copy(), canonical) == tag
 
     def _build_message(self, payload: bytes) -> bytes:
-        if len(payload) > 250:
+        if len(payload) > MAX_PAYLOAD_SIZE:
             raise AlgorithmError(
-                f"Payload of {len(payload)} bytes exceeds the maximum of 250 bytes "
-                "(the fragment index is a single byte)."
+                f"Payload of {len(payload)} bytes exceeds the maximum of "
+                f"{MAX_PAYLOAD_SIZE} bytes (the fragment index is a single byte)."
             )
         body = bytes([len(payload)]) + payload
         return body + binascii.crc32(body).to_bytes(4, "big")
