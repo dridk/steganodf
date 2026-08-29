@@ -59,16 +59,26 @@ message = steganodf.decode(new_df, password="secret")
 
 ## Algorithms
 
-Choose an algorithm with `algorithm=` (Python) or `-a` (CLI). All three share the
+Choose an algorithm with `algorithm=` (Python) or `-a` (CLI). All four share the
 same Reed-Solomon / CRC / fountain protection and the same canonical row
 fingerprint (columns sorted by name, so a column reordering is survived).
 
 | Algorithm | Where the message lives | Survives a row shuffle? | Capacity | Cost |
 |---|---|---|---|---|
 | `bitpool` (default) | Order of the rows | ❌ sorting/shuffling erases it | High | Zero distortion |
+| `bitsync` | Order of the rows, Davey-MacKay synchronized | ❌ | ~½ of bitpool | Zero distortion |
 | `bitvote` | LSB of one numeric column, majority-voted | ✅ | ~19 bytes | 1 ULP per row |
 | `bitghost` | Synthetic self-identifying rows | ✅ | ~250 bytes | Injects fake rows |
 
+- **`bitsync`** is a permutation watermark like `bitpool`, but built on the
+  Davey-MacKay construction: the packet stream is thinned out and XORed with a
+  pseudo-random watermark sequence, and the decoder re-synchronizes with a hidden
+  Markov model instead of sliding a window over every offset. A deleted or
+  inserted row costs a couple of locally corrupted bytes (repaired by
+  Reed-Solomon) instead of a whole packet, so it withstands scattered row
+  deletions, insertions of foreign rows and head/tail cropping noticeably better,
+  and decodes with a handful of Reed-Solomon attempts instead of one per row. The
+  price is the sparse code: half the capacity of `bitpool` at the same settings.
 - **`bitvote`** writes one message bit in the least significant bit of a numeric
   carrier column, choosing the target bit and a mask from a keyed fingerprint of
   the row's other columns. Decoding lets every row vote and takes the majority, so

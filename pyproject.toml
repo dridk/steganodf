@@ -21,7 +21,8 @@ classifiers = [
 
 dependencies = [
   "polars",
-  "reedsolo"
+  "reedsolo",
+  "numpy"
 ]
 authors = [
   {name="Sacha Schutz", email="sacha.schutz@pm.me"}
@@ -31,4 +32,4 @@ authors = [
 steganodf = "steganodf.__main__:main"
 
 [project.optional-dependencies]
-dev= ["pytest", "numpy", "twine", "build", "pandas", "pyarrow"]
+dev= ["pytest", "twine", "build", "pandas", "pyarrow"]
