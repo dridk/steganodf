@@ -80,13 +80,6 @@ watermarked = steganodf.encode(df, b"made by steganodf", password="secret")
 message = steganodf.decode(watermarked, password="secret")
 ```
 
-`decode` returns empty bytes when no complete message could be recovered, so "no watermark here"
-and "the watermark says nothing" look alike; `decode_details` and `try_decode` (below) both report
-a `success` flag instead.
-
-Pass `algorithm=` to `encode` and `decode`. Both sides must agree on the algorithm and on every
-parameter that affects the framing (`password`, `bit_per_row`, `data_size`, `sort_columns`…).
-
 ```python
 # A shuffle-resistant watermark
 watermarked = steganodf.encode(df, b"made by steganodf", algorithm="bitvote")
