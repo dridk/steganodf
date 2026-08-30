@@ -4,266 +4,583 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Steganodf</title>
   <link rel="stylesheet" href="https://pyscript.net/releases/2024.11.1/core.css">
   <script type="module" src="https://pyscript.net/releases/2024.11.1/core.js"></script>
-  <script src="https://cdn.tailwindcss.com"></script>
-  <title>Steganodf</title>
   <style>
-    /* Make .hidden truly hide elements even when other display classes are present */
-    .hidden { display: none !important; }
-
-    /* Drop zone drag-active state */
-    .dz-active {
-      border-color: #171717 !important;
-      background-color: #fafafa;
+    /* ── Tokens ───────────────────────────────────────────────────────── */
+    :root {
+      --surface: #ffffff;
+      --canvas: #fafafa;
+      --border: #e5e5e5;
+      --border-soft: #f0f0f0;
+      --border-faint: #f5f5f5;
+      --fill: #f5f5f5;
+      --ink: #171717;
+      --ink-2: #262626;
+      --ink-3: #404040;
+      --muted: #737373;
+      --muted-2: #a3a3a3;
+      --danger: #dc2626;
+      --danger-ink: #b91c1c;
+      --danger-border: #fecaca;
+      --danger-bg: #fef2f2;
+      --danger-edge: #fca5a5;
+      --font: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
     }
 
-    /* Smooth pyscript spinner visibility */
+    /* ── Base ─────────────────────────────────────────────────────────── */
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      font-family: var(--font);
+      background: var(--canvas);
+      color: var(--ink);
+    }
+
+    a { color: var(--ink); }
+    a:hover { color: #525252; }
+
+    input:focus, textarea:focus, select:focus, button:focus-visible,
+    [role="button"]:focus-visible {
+      outline: 2px solid #d4d4d4;
+      outline-offset: 0;
+    }
+
+    /* Wins over the display values set on .sidebar, .dropzone and friends. */
+    [hidden] { display: none !important; }
+
     py-config, py-script { display: none; }
 
-    /* Tailwind doesn't ship @font-face, use system stack */
-    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+    /* ── Shell ────────────────────────────────────────────────────────── */
+    .app {
+      display: flex;
+      flex-direction: column;
+      height: 100vh;
+      overflow: hidden;
+      background: var(--canvas);
+    }
 
-    /* Spinning animation for loading indicator */
+    .topbar {
+      height: 56px;
+      flex-shrink: 0;
+      border-bottom: 1px solid var(--border);
+      background: var(--surface);
+      display: flex;
+      align-items: center;
+      padding: 0 20px;
+      gap: 12px;
+    }
+
+    .brand { display: flex; align-items: baseline; gap: 8px; }
+    .brand__name { font-weight: 600; font-size: 14px; letter-spacing: -0.01em; }
+
+    .pill {
+      font-size: 11px;
+      font-weight: 500;
+      color: var(--muted);
+      background: var(--fill);
+      border: 1px solid var(--border);
+      border-radius: 99px;
+      padding: 1px 8px;
+    }
+
+    .brand__tagline { color: var(--muted-2); font-size: 12px; }
+
+    .topbar__link {
+      margin-left: auto;
+      font-size: 12px;
+      color: var(--muted);
+      text-decoration: none;
+    }
+
+    .shell { display: flex; flex: 1; overflow: hidden; }
+
+    .footer {
+      flex-shrink: 0;
+      border-top: 1px solid var(--border-faint);
+      background: var(--surface);
+      padding: 8px 24px;
+      text-align: center;
+      font-size: 11px;
+      color: var(--muted-2);
+    }
+
+    .footer__author { font-weight: 500; color: var(--muted); }
+
+    /* ── Loading ──────────────────────────────────────────────────────── */
+    .loading {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-left: auto;
+      font-size: 12px;
+      color: var(--muted);
+    }
+
+    /* Sits next to the GitHub link, which keeps its own margin-left: auto. */
+    .loading + .topbar__link { margin-left: 12px; }
+
     @keyframes spin { to { transform: rotate(360deg); } }
     .spin { animation: spin 0.8s linear infinite; }
+    @media (prefers-reduced-motion: reduce) { .spin { animation: none; } }
+
+    /* ── Sidebar ──────────────────────────────────────────────────────── */
+    .sidebar {
+      width: 300px;
+      flex-shrink: 0;
+      background: var(--surface);
+      border-right: 1px solid var(--border);
+      display: flex;
+      flex-direction: column;
+      padding: 20px;
+      gap: 16px;
+      overflow-y: auto;
+    }
+
+    .section-label {
+      margin: 0;
+      font-size: 10px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.12em;
+      color: var(--muted-2);
+    }
+
+    .field { display: flex; flex-direction: column; gap: 4px; }
+    .field__label { font-size: 13px; font-weight: 500; color: var(--ink-2); }
+    .field__help { margin: 0; font-size: 11px; color: var(--muted-2); line-height: 1.4; }
+    .field__control { margin-top: 4px; }
+
+    .divider { border-top: 1px solid var(--border-faint); }
+
+    /* ── Dataset tiles ────────────────────────────────────────────────── */
+    .dataset { display: flex; flex-direction: column; gap: 6px; }
+
+    .dataset__grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr 1fr;
+      gap: 6px;
+    }
+
+    .tile {
+      background: var(--canvas);
+      border: 1px solid var(--border-soft);
+      border-radius: 6px;
+      padding: 8px 10px;
+      display: flex;
+      flex-direction: column;
+      gap: 1px;
+      min-width: 0;
+    }
+
+    .tile__label {
+      font-size: 9px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--muted-2);
+    }
+
+    .tile__value {
+      font-size: 14px;
+      font-weight: 600;
+      color: var(--ink);
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    /* ── Controls ─────────────────────────────────────────────────────── */
+    select, input[type="password"], input[type="text"], textarea {
+      width: 100%;
+      border-radius: 6px;
+      border: 1px solid var(--border);
+      background: var(--surface);
+      padding: 8px 12px;
+      font-size: 13px;
+      font-family: inherit;
+      color: var(--ink-2);
+    }
+
+    select {
+      letter-spacing: normal;
+      -webkit-appearance: none;
+      appearance: none;
+      background-image: url('data:image/svg+xml;utf8,<svg xmlns=%22http://www.w3.org/2000/svg%22 width=%2212%22 height=%2212%22 viewBox=%220 0 24 24%22 fill=%22none%22 stroke=%22%23737373%22 stroke-width=%222%22 stroke-linecap=%22round%22 stroke-linejoin=%22round%22><polyline points=%226 9 12 15 18 9%22/></svg>');
+      background-repeat: no-repeat;
+      background-position: right 12px center;
+      padding-right: 32px;
+    }
+
+    /* ── Payload ──────────────────────────────────────────────────────── */
+    .payload {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      flex: 1;
+      min-height: 90px;
+    }
+
+    .payload__head { display: flex; align-items: baseline; }
+    .payload__counter { margin-left: auto; font-size: 11px; color: var(--muted-2); }
+    .payload__counter.is-over { color: var(--danger); }
+
+    #payload {
+      margin-top: 4px;
+      flex: 1;
+      min-height: 70px;
+      resize: none;
+    }
+
+    #payload.is-over { border-color: var(--danger-edge); }
+
+    /* ── Alerts ───────────────────────────────────────────────────────── */
+    .alert {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      border-radius: 6px;
+      padding: 7px 10px;
+      font-size: 11px;
+      line-height: 1.4;
+      background: var(--danger-bg);
+      border: 1px solid var(--danger-border);
+      color: var(--danger-ink);
+    }
+
+    .alert svg { flex-shrink: 0; }
+
+    .alert--info {
+      background: var(--canvas);
+      border-color: var(--border);
+      color: #525252;
+    }
+
+    .alert--info svg { stroke: var(--muted); }
+
+    /* ── Buttons ──────────────────────────────────────────────────────── */
+    .actions { display: flex; gap: 8px; }
+
+    .btn {
+      border-radius: 6px;
+      font-size: 13px;
+      font-weight: 500;
+      padding: 9px 16px;
+      font-family: inherit;
+      cursor: pointer;
+      border: 1px solid var(--border);
+      background: var(--surface);
+      color: var(--ink-2);
+    }
+
+    .btn:hover { background: var(--canvas); }
+    .btn--primary { background: var(--ink); color: var(--surface); border-color: var(--ink); }
+    .btn--primary:hover { background: var(--ink-3); border-color: var(--ink-3); }
+    .btn--grow { flex: 1; }
+
+    .btn--browse {
+      color: var(--ink-3);
+      padding: 8px 20px;
+      box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
+    }
+
+    .btn--browse:hover { border-color: #d4d4d4; }
+
+    .btn--link {
+      margin-left: auto;
+      font-size: 12px;
+      color: var(--muted);
+      background: none;
+      border: none;
+      padding: 0;
+    }
+
+    .btn--link:hover { color: var(--ink); background: none; }
+
+    /* ── Main ─────────────────────────────────────────────────────────── */
+    .main {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 20px;
+      padding: 32px;
+      overflow-y: auto;
+    }
+
+    .file-card {
+      width: 420px;
+      max-width: 100%;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 16px 20px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .file-card__name {
+      font-size: 13px;
+      font-weight: 500;
+      color: var(--ink-2);
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .dropzone {
+      width: 340px;
+      max-width: 100%;
+      height: 320px;
+      border-radius: 16px;
+      border: 2px dashed var(--muted-2);
+      background: var(--surface);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 12px;
+      cursor: pointer;
+      user-select: none;
+      transition: border-color 0.15s, background-color 0.15s;
+    }
+
+    .dropzone:hover, .dropzone.is-active {
+      border-color: #525252;
+      background: var(--canvas);
+    }
+
+    .dropzone__icon {
+      width: 56px;
+      height: 56px;
+      border-radius: 99px;
+      background: var(--fill);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .dropzone__text { text-align: center; padding: 0 32px; }
+
+    .dropzone__title {
+      margin: 0;
+      font-size: 13px;
+      font-weight: 500;
+      color: var(--ink-3);
+    }
+
+    .dropzone__or {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      width: 112px;
+    }
+
+    .dropzone__rule { flex: 1; border-top: 1px solid var(--border); }
+    .dropzone__or span { font-size: 11px; color: var(--muted-2); }
+
+    /* ── Narrow screens ───────────────────────────────────────────────── */
+    @media (max-width: 720px) {
+      .app { height: auto; min-height: 100vh; overflow: visible; }
+      .shell { flex-direction: column; overflow: visible; }
+      .sidebar { width: 100%; border-right: none; border-bottom: 1px solid var(--border); }
+      .brand__tagline { display: none; }
+    }
   </style>
 </head>
 
-<body class="bg-neutral-50 text-neutral-900 flex flex-col sm:h-screen sm:overflow-hidden">
+<body>
+  <div class="app">
 
-  <!-- ── Top bar ── -->
-  <header class="h-14 shrink-0 border-b border-neutral-200 bg-white flex items-center px-5 gap-3">
-
-    <!-- Lucide Fingerprint icon -->
-    <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none"
-      stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
-      class="shrink-0 text-neutral-800">
-      <path d="M12 10a2 2 0 0 0-2 2c0 1.02-.1 2.51-.26 4"/>
-      <path d="M14 13.12c0 2.38 0 6.38-1 8.88"/>
-      <path d="M17.29 21.02c.12-.6.43-2.3.5-3.02"/>
-      <path d="M2 12a10 10 0 0 1 18-6"/>
-      <path d="M2 16h.01"/>
-      <path d="M21.8 16c.2-2 .131-5.354 0-6"/>
-      <path d="M5 19.5C5.5 18 6 15 6 12a6 6 0 0 1 .34-2"/>
-      <path d="M8.65 22c.21-.66.45-1.32.57-2"/>
-      <path d="M9 6.8a6 6 0 0 1 9 5.2v2"/>
-    </svg>
-
-    <div class="flex items-baseline gap-2">
-      <span class="font-semibold text-sm tracking-tight">Steganodf</span>
-      <span class="text-neutral-400 text-xs hidden sm:inline">Hide a secret message in a tabular dataset</span>
-    </div>
-
-    <!-- Loading indicator — toggled by PyScript via classList.remove("hidden") -->
-    <div id="loading" class="hidden flex items-center gap-2 ml-auto text-sm text-neutral-500">
-      <svg class="spin h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-        <circle class="opacity-20" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="3"></circle>
-        <path class="opacity-80" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
+    <!-- ── Top bar ── -->
+    <header class="topbar">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#262626" stroke-width="2"
+        stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <path d="M12 10a2 2 0 0 0-2 2c0 1.02-.1 2.51-.26 4"/>
+        <path d="M14 13.12c0 2.38 0 6.38-1 8.88"/>
+        <path d="M17.29 21.02c.12-.6.43-2.3.5-3.02"/>
+        <path d="M2 12a10 10 0 0 1 18-6"/>
+        <path d="M2 16h.01"/>
+        <path d="M21.8 16c.2-2 .131-5.354 0-6"/>
+        <path d="M5 19.5C5.5 18 6 15 6 12a6 6 0 0 1 .34-2"/>
+        <path d="M8.65 22c.21-.66.45-1.32.57-2"/>
+        <path d="M9 6.8a6 6 0 0 1 9 5.2v2"/>
       </svg>
-      Processing…
-    </div>
-  </header>
 
-  <!-- ── Body: sidebar + main ── -->
-  <div class="flex flex-col sm:flex-row sm:flex-1 sm:overflow-hidden">
-
-    <!-- ── Left sidebar ── -->
-    <aside class="w-full sm:w-72 sm:shrink-0 bg-white border-b sm:border-b-0 sm:border-r border-neutral-200 flex flex-col p-5 gap-4 sm:overflow-y-auto">
-
-      <p class="text-[10px] font-semibold uppercase tracking-widest text-neutral-400 pb-1">Parameters</p>
-
-      <!-- Bits per row -->
-      <div class="flex flex-col gap-1">
-        <label class="text-sm font-medium text-neutral-800" for="bit-select">Bits per row</label>
-        <p class="text-xs text-neutral-400 leading-snug">More bits = more capacity, less robustness.</p>
-        <select id="bit-select"
-          class="mt-1.5 w-full rounded-md border border-neutral-200 bg-white px-3 py-2 text-sm text-neutral-800
-                 focus:outline-none focus:ring-2 focus:ring-neutral-300 transition-shadow">
-          <option value="1">1 bit per row</option>
-          <option value="2" selected>2 bits per row</option>
-          <option value="4">4 bits per row</option>
-        </select>
+      <div class="brand">
+        <span class="brand__name">Steganodf</span>
+        <span class="pill">v0.2.5</span>
+        <span class="brand__tagline">Hide a secret message in a tabular dataset</span>
       </div>
 
-      <!-- Password -->
-      <div class="flex flex-col gap-1">
-        <label class="text-sm font-medium text-neutral-800" for="password">Password</label>
-        <p class="text-xs text-neutral-400 leading-snug">Optional — encrypts the hidden payload.</p>
-        <input id="password" type="password" placeholder="Enter a password…"
-          class="mt-1.5 w-full rounded-md border border-neutral-200 bg-white px-3 py-2 text-sm
-                 placeholder:text-neutral-400 focus:outline-none focus:ring-2 focus:ring-neutral-300 transition-shadow">
-      </div>
-
-      <div class="border-t border-neutral-100 my-1"></div>
-
-      <!-- Secret message -->
-      <div class="flex flex-col gap-1 sm:flex-1 sm:min-h-0">
-        <label class="text-sm font-medium text-neutral-800" for="payload">Secret message</label>
-        <p class="text-xs text-neutral-400 leading-snug">Type to encode — decoded text appears here.</p>
-        <textarea id="payload" placeholder="Your secret message…"
-          class="mt-1.5 w-full h-28 sm:flex-1 sm:min-h-0 rounded-md border border-neutral-200 bg-white px-3 py-2 text-sm
-                 placeholder:text-neutral-400 focus:outline-none focus:ring-2 focus:ring-neutral-300
-                 transition-shadow resize-none"></textarea>
-      </div>
-
-      <!-- Row count badge -->
-      <div class="flex items-center gap-2 rounded-md bg-neutral-50 border border-neutral-100 px-3 py-2 text-sm text-neutral-500">
-        <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none"
-          stroke="currentColor" stroke-width="2" class="shrink-0 text-neutral-400">
-          <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
-          <polyline points="14 2 14 8 20 8"/>
+      <!-- Toggled from main.py while polars is working -->
+      <div id="loading" class="loading" hidden>
+        <svg class="spin" width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+          <circle opacity="0.2" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="3"></circle>
+          <path opacity="0.8" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
         </svg>
-        <span><span id="row-count">0</span>&nbsp;row(s) loaded</span>
+        <span id="loading-text">Working…</span>
       </div>
 
-      <!-- Action buttons -->
-      <div class="flex gap-2">
-        <button py-click="encode"
-          class="flex-1 rounded-md bg-neutral-900 text-white text-sm font-medium px-4 py-2
-                 hover:bg-neutral-700 active:bg-neutral-800 transition-colors cursor-pointer">
-          Encode
-        </button>
-        <button py-click="decode"
-          class="flex-1 rounded-md border border-neutral-200 bg-white text-neutral-800 text-sm font-medium px-4 py-2
-                 hover:bg-neutral-50 active:bg-neutral-100 transition-colors cursor-pointer">
-          Decode
-        </button>
-      </div>
+      <a class="topbar__link" href="https://github.com/dridk/steganodf">GitHub</a>
+    </header>
 
-      <!-- Download button (kept in DOM for potential use) -->
-      <button id="download" class="hidden w-full rounded-md border border-neutral-200 bg-neutral-50 text-neutral-700
-                                    text-sm font-medium px-4 py-2 hover:bg-neutral-100 transition-colors">
-        Download
-      </button>
+    <div class="shell">
 
-    </aside>
+      <!-- ── Sidebar (revealed once a file is loaded) ── -->
+      <aside class="sidebar" id="sidebar" hidden>
 
-    <!-- ── Main area ── -->
-    <main class="flex-1 flex flex-col items-center justify-center gap-5 p-6 sm:p-8 sm:overflow-y-auto">
-
-      <!-- Drop zone -->
-      <div id="drop-zone"
-        class="relative w-full max-w-xs sm:w-80 h-64 sm:h-80 rounded-2xl border-2 border-dashed border-neutral-200 bg-white
-               flex flex-col items-center justify-center gap-3 cursor-pointer
-               transition-all hover:border-neutral-300 hover:bg-neutral-50 select-none">
-
-        <!-- Upload cloud icon -->
-        <div class="w-14 h-14 rounded-full bg-neutral-100 flex items-center justify-center">
-          <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24"
-            fill="none" stroke="currentColor" stroke-width="1.5" class="text-neutral-500">
-            <polyline points="16 16 12 12 8 16"/>
-            <line x1="12" y1="12" x2="12" y2="21"/>
-            <path d="M20.39 18.39A5 5 0 0 0 18 9h-1.26A8 8 0 1 0 3 16.3"/>
-          </svg>
-        </div>
-
-        <div class="text-center px-8">
-          <p class="text-sm font-medium text-neutral-700">Drop your CSV file here</p>
-          <p class="text-xs text-neutral-400 mt-0.5">CSV format supported</p>
-        </div>
-
-        <!-- "or" divider -->
-        <div class="flex items-center gap-3 w-28">
-          <div class="flex-1 border-t border-neutral-200"></div>
-          <span class="text-xs text-neutral-400">or</span>
-          <div class="flex-1 border-t border-neutral-200"></div>
-        </div>
-
-        <!-- Browse button -->
-        <button type="button" id="browse-btn"
-          class="rounded-md border border-neutral-200 bg-white text-neutral-700 text-sm font-medium px-5 py-2
-                 shadow-sm hover:bg-neutral-50 hover:border-neutral-300 active:bg-neutral-100 transition-all">
-          Browse
-        </button>
-
-        <!-- File name badge — shown after file selection -->
-        <div id="file-info" class="hidden absolute bottom-3 left-3 right-3">
-          <div class="flex items-center justify-center gap-1.5 bg-neutral-50 border border-neutral-100 rounded-lg px-3 py-1.5">
-            <svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none"
-              stroke="currentColor" stroke-width="2" class="text-neutral-400 shrink-0">
-              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
-              <polyline points="14 2 14 8 20 8"/>
-            </svg>
-            <span id="file-name" class="text-xs text-neutral-600 font-medium truncate max-w-[180px] sm:max-w-[220px]"></span>
+        <div class="dataset">
+          <p class="section-label">Dataset</p>
+          <div class="dataset__grid">
+            <div class="tile">
+              <span class="tile__label">Rows</span>
+              <span class="tile__value" id="row-count">—</span>
+            </div>
+            <div class="tile">
+              <span class="tile__label">Cols</span>
+              <span class="tile__value" id="col-count">—</span>
+            </div>
+            <div class="tile">
+              <span class="tile__label">Capacity</span>
+              <span class="tile__value" id="capacity" data-bytes="">—</span>
+            </div>
           </div>
         </div>
 
-        <!-- Hidden real file input -->
-        <input type="file" id="file-upload" accept=".csv" class="hidden">
-      </div>
+        <div class="field">
+          <p class="section-label">Algorithm</p>
+          <select id="algo-select" aria-label="Algorithm">
+            <option value="bitpool" selected>bitpool — permutation</option>
+            <option value="bitsync">bitsync — permutation</option>
+            <option value="bitvote">bitvote — alteration</option>
+            <option value="bitghost">bitghost — synthesis</option>
+          </select>
+          <p class="field__help" id="algo-desc"></p>
+        </div>
 
-      <p class="text-xs text-neutral-400 text-center max-w-xs leading-relaxed">
-        Messages are hidden by permuting row order — no pixels, no noise.<br>
-        All processing runs in your browser. Nothing is transmitted.
-      </p>
+        <div class="divider"></div>
 
-    </main>
+        <p class="section-label">Parameters</p>
+
+        <div class="field" id="bits-field">
+          <label class="field__label" for="bit-select">Bits per row</label>
+          <p class="field__help">More bits = more capacity, less robustness.</p>
+          <select class="field__control" id="bit-select">
+            <option value="1">1 bit per row</option>
+            <option value="2" selected>2 bits per row</option>
+            <option value="4">4 bits per row</option>
+            <option value="8">8 bits per row</option>
+          </select>
+        </div>
+
+        <div class="field" id="column-field" hidden>
+          <label class="field__label" for="column-select">Carrier column</label>
+          <p class="field__help" id="column-help"></p>
+          <select class="field__control" id="column-select">
+            <option value="">Default (auto)</option>
+          </select>
+        </div>
+
+        <div class="field">
+          <label class="field__label" for="password">Password</label>
+          <p class="field__help">Optional — encrypts the hidden payload.</p>
+          <input class="field__control" id="password" type="password" placeholder="Enter a password…"
+            autocomplete="off">
+        </div>
+
+        <div class="payload">
+          <div class="payload__head">
+            <label class="field__label" for="payload">Secret message</label>
+            <span class="payload__counter" id="payload-counter">0 B</span>
+          </div>
+          <p class="field__help">Type to encode — decoded text appears here.</p>
+          <textarea id="payload" placeholder="Your secret message…"></textarea>
+
+          <div class="alert" id="over-capacity" hidden>
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#dc2626" stroke-width="2"
+              stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/>
+              <line x1="12" y1="9" x2="12" y2="13"/>
+              <line x1="12" y1="17" x2="12.01" y2="17"/>
+            </svg>
+            <span id="over-capacity-text"></span>
+          </div>
+        </div>
+
+        <div class="actions">
+          <button class="btn btn--primary btn--grow" py-click="encode">Encode</button>
+          <button class="btn btn--grow" py-click="decode">Decode</button>
+        </div>
+
+        <!-- Anything the library reports back: an AlgorithmError, a failed
+             decode, or a successful round trip. -->
+        <div class="alert" id="status" role="status" aria-live="polite" hidden>
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#dc2626" stroke-width="2"
+            stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <circle cx="12" cy="12" r="10"/>
+            <line x1="12" y1="8" x2="12" y2="12"/>
+            <line x1="12" y1="16" x2="12.01" y2="16"/>
+          </svg>
+          <span id="status-text"></span>
+        </div>
+
+      </aside>
+
+      <!-- ── Main ── -->
+      <main class="main">
+
+        <div class="file-card" id="file-card" hidden>
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#737373" stroke-width="2"
+            stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+            <polyline points="14 2 14 8 20 8"/>
+          </svg>
+          <span class="file-card__name" id="file-name"></span>
+          <button class="btn btn--link" id="remove-file" type="button">Remove</button>
+        </div>
+
+        <div class="dropzone" id="drop-zone" role="button" tabindex="0"
+          aria-label="Drop a CSV or Parquet file here, or press Enter to browse">
+          <div class="dropzone__icon">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#737373" stroke-width="1.5"
+              stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <polyline points="16 16 12 12 8 16"/>
+              <line x1="12" y1="12" x2="12" y2="21"/>
+              <path d="M20.39 18.39A5 5 0 0 0 18 9h-1.26A8 8 0 1 0 3 16.3"/>
+            </svg>
+          </div>
+
+          <div class="dropzone__text">
+            <p class="dropzone__title">Drop your CSV or Parquet file here</p>
+          </div>
+
+          <div class="dropzone__or">
+            <div class="dropzone__rule"></div>
+            <span>or</span>
+            <div class="dropzone__rule"></div>
+          </div>
+
+          <button class="btn btn--browse" type="button" id="browse-btn">Browse</button>
+        </div>
+
+      </main>
+    </div>
+
+    <footer class="footer">
+      Made by <span class="footer__author">@dridk</span>
+      &nbsp;·&nbsp; PyScript &nbsp;·&nbsp; polars &nbsp;·&nbsp; reedsolo &nbsp;·&nbsp; lt-code
+    </footer>
   </div>
 
-  <!-- ── Footer ── -->
-  <footer class="shrink-0 border-t border-neutral-100 bg-white px-6 py-2 text-center text-xs text-neutral-400">
-    Made by <span class="font-medium text-neutral-500">@dridk</span>
-    &nbsp;·&nbsp; PyScript &nbsp;·&nbsp; polars &nbsp;·&nbsp; reedsolo &nbsp;·&nbsp; lt-code
-  </footer>
+  <!-- Lives outside the drop zone so it survives the zone being hidden. -->
+  <input type="file" id="file-upload" accept=".csv,.parquet" hidden>
 
-  <!-- ── Drag & drop + browse handler ── -->
-  <script>
-    const dropZone   = document.getElementById('drop-zone');
-    const fileInput  = document.getElementById('file-upload');
-    const browseBtn  = document.getElementById('browse-btn');
-    const fileInfo   = document.getElementById('file-info');
-    const fileNameEl = document.getElementById('file-name');
-
-    // Click anywhere on the drop zone (except the browse button) opens the picker
-    dropZone.addEventListener('click', (e) => {
-      if (e.target !== browseBtn && !browseBtn.contains(e.target)) {
-        fileInput.click();
-      }
-    });
-
-    browseBtn.addEventListener('click', (e) => {
-      e.stopPropagation();
-      fileInput.click();
-    });
-
-    // Drag events
-    ['dragenter', 'dragover'].forEach(evt =>
-      dropZone.addEventListener(evt, (e) => {
-        e.preventDefault();
-        dropZone.classList.add('dz-active');
-      })
-    );
-
-    ['dragleave', 'dragend'].forEach(evt =>
-      dropZone.addEventListener(evt, () => {
-        dropZone.classList.remove('dz-active');
-      })
-    );
-
-    dropZone.addEventListener('drop', (e) => {
-      e.preventDefault();
-      dropZone.classList.remove('dz-active');
-      const files = e.dataTransfer.files;
-      if (files.length) {
-        const dt = new DataTransfer();
-        dt.items.add(files[0]);
-        fileInput.files = dt.files;
-        // PyScript listens to the 'change' event on #file-upload
-        fileInput.dispatchEvent(new Event('change', { bubbles: true }));
-      }
-    });
-
-    // Show file name badge after any file selection (browse or drop)
-    fileInput.addEventListener('change', () => {
-      if (fileInput.files.length) {
-        fileNameEl.textContent = fileInput.files[0].name;
-        fileInfo.classList.remove('hidden');
-      }
-    });
-  </script>
-
+  <script src="./ui.js"></script>
   <script type="py" config="pyscript.json" src="./main.py"></script>
-
 </body>
+
 </html>

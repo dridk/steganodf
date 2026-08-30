@@ -14,11 +14,11 @@ SUPPORTED_FORMATS_IO = {
 
 
 def get_supported_input_format():
-    return tuple(i for i, _ in SUPPORTED_FORMATS_IO if i and callable(i))
+    return tuple(suffix for suffix, (reader, _) in SUPPORTED_FORMATS_IO.items() if callable(reader))
 
 
 def get_supported_output_format():
-    return tuple(o for _, o in SUPPORTED_FORMATS_IO if o and callable(o))
+    return tuple(suffix for suffix, (_, writer) in SUPPORTED_FORMATS_IO.items() if callable(writer))
 
 
 def read_file(path: Path) -> pl.DataFrame:
@@ -57,15 +57,26 @@ def parse_cli(args=None) -> argparse.Namespace:
     )
     subparsers = parser.add_subparsers(dest="command", required=True)
 
-    def add_common_args(subparser):
+    def add_common_args(subparser, allow_auto=False):
         subparser.add_argument("input", type=ap_input_file, help="Input file")
         subparser.add_argument("--password", "-p", type=str, required=False, help="Password to use")
+        subparser.add_argument(
+            "--column",
+            "-c",
+            type=str,
+            required=False,
+            help="Name of the carrier column (bitvote/bitghost only)",
+        )
+        # "auto" is only offered to decode: it tries every algorithm in turn,
+        # which makes no sense when encoding.
+        choices = list(ALGORITHMS.keys()) + (["auto"] if allow_auto else [])
         subparser.add_argument(
             "--algorithm",
             "-a",
             type=str,
-            choices=list(ALGORITHMS.keys()),
-            help="Algorithm to use",
+            choices=choices,
+            help="Algorithm to use"
+            + (", or 'auto' to try them all with their default parameters" if allow_auto else ""),
             default="bitpool",
         )
 
@@ -83,7 +94,7 @@ def parse_cli(args=None) -> argparse.Namespace:
 
     # command "decode"
     decode_parser = subparsers.add_parser("decode", help="Decode a file with a hidden message")
-    add_common_args(decode_parser)
+    add_common_args(decode_parser, allow_auto=True)
 
     return parser.parse_args(args)
 
@@ -91,18 +102,52 @@ def parse_cli(args=None) -> argparse.Namespace:
 def main():
     args = parse_cli()
 
+    # `column` is only accepted by the alteration algorithms, so forward it
+    # only when the user set it (bitpool would reject an unexpected argument).
+    extra = {"column": args.column} if args.column else {}
+
     if args.command == "encode":
 
         df = read_file(args.input)
         new_df = st.encode(
-            df, payload=args.message.encode(), algorithm=args.algorithm, password=args.password
+            df,
+            payload=args.message.encode(),
+            algorithm=args.algorithm,
+            password=args.password,
+            **extra,
         )
         write_file(new_df, args.output)
 
     elif args.command == "decode":
         df = read_file(args.input)
-        print(st.decode(df, algorithm=args.algorithm, password=args.password).decode())
+
+        if args.algorithm == "auto":
+            # Which algorithm matched is the useful part of the answer, and
+            # decode() alone would throw it away.
+            result = st.try_decode(df, password=args.password, **extra)
+            payload = result["payload"]
+            if payload:
+                print(f"Decoded with {result['algorithm']}", file=sys.stderr)
+        else:
+            payload = st.decode(df, algorithm=args.algorithm, password=args.password, **extra)
+
+        if not payload:
+            tried = (
+                "Every algorithm was tried, with its default parameters. "
+                if args.algorithm == "auto"
+                else ""
+            )
+            print(
+                f"No message could be decoded from {args.input}. " + tried +
+                "The file may not be watermarked, the password may be wrong, "
+                "or the rows may have been reordered.",
+                file=sys.stderr,
+            )
+            return 1
+        print(payload.decode())
+
+    return 0
 
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())
