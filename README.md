@@ -20,6 +20,52 @@ three at once:
 
 Steganodf ships **four algorithms** that sit at different points of that trade-off. 
 
+## Try it in your browser
+
+The web app runs the whole library in your browser — nothing is uploaded, the dataframe never
+leaves your machine: **<https://dridk.github.io/steganodf/>**
+
+## From the command line
+
+`pip install steganodf` gives you a permanent `steganodf` command. With
+[uv](https://docs.astral.sh/uv/), `uvx steganodf ...` runs the same command line in a throwaway
+environment, without installing anything.
+
+```bash
+# Encoding
+steganodf encode -m hello host.csv stegano.csv
+steganodf encode -m hello host.parquet stegano.parquet
+steganodf encode -m hello -p password host.parquet stegano.parquet
+
+# Decoding
+steganodf decode stegano.csv
+steganodf decode stegano.csv -p password
+
+# Choosing an algorithm, and the carrier column for bitvote / bitghost
+steganodf encode -m hello -a bitvote -c price host.csv stegano.csv
+steganodf decode -a bitvote -c price stegano.csv
+
+# Decoding without knowing the algorithm: tries all four, names the one that matched
+steganodf decode -a auto stegano.csv
+```
+
+The CLI reads and writes `.csv` and `.parquet`, and exposes `--password`, `--column` and
+`--algorithm`. Tuning parameters such as `bit_per_row` or `data_size` are Python-only.
+
+Prefix any of them with `uvx` to skip the installation entirely:
+
+```bash
+uvx steganodf encode -m hello host.csv stegano.csv
+uvx steganodf decode stegano.csv                    # hello
+```
+
+`uvx steganodf` needs a release >= 0.3.0. Until it is published, run the development version
+straight from the repository:
+
+```bash
+uvx --from git+https://github.com/dridk/steganodf@dev steganodf decode stegano.csv
+```
+
 ## Choosing an algorithm
 
 **The three methods:**
@@ -145,29 +191,6 @@ produces will, since it always uses the defaults. The password is not guessed ei
 
 The candidates are tried cheapest first (`bitvote`, `bitghost`, `bitpool`, `bitsync`), so the slow
 ones only run once the fast ones have failed.
-
-### From the command line
-
-```bash
-# Encoding
-steganodf encode -m hello host.csv stegano.csv
-steganodf encode -m hello host.parquet stegano.parquet
-steganodf encode -m hello -p password host.parquet stegano.parquet
-
-# Decoding
-steganodf decode stegano.csv
-steganodf decode stegano.csv -p password
-
-# Choosing an algorithm, and the carrier column for bitvote / bitghost
-steganodf encode -m hello -a bitvote -c price host.csv stegano.csv
-steganodf decode -a bitvote -c price stegano.csv
-
-# Decoding without knowing the algorithm: tries all four, names the one that matched
-steganodf decode -a auto stegano.csv
-```
-
-The CLI reads and writes `.csv` and `.parquet`, and exposes `--password`, `--column` and
-`--algorithm`. Tuning parameters such as `bit_per_row` or `data_size` are Python-only.
 
 ## Algorithms in detail
 
