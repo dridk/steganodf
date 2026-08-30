@@ -174,6 +174,29 @@ The CLI reads and writes `.csv` and `.parquet`, and exposes `--password`, `--col
 [DETAIL.md](DETAIL.md) covers each algorithm in turn — what it is built on, what it is good at,
 where it breaks — plus the threat model.
 
+## Development and releases
+
+steganodf requires **Python 3.11+** and is developed with [uv](https://docs.astral.sh/uv/):
+
+```bash
+uv sync --extra dev
+uv run pytest --doctest-modules steganodf tests   # or: make test
+```
+
+Every push and pull request on `main` and `dev` runs the test suite on Python 3.11 and 3.13
+(`.github/workflows/tests.yml`).
+
+Releasing to PyPI is automated (`.github/workflows/publish.yml`, trusted publishing over OIDC —
+no API token). To cut a release:
+
+1. On `dev`: bump `version` in `pyproject.toml`, run `uv lock`, commit.
+2. Merge `dev` into `main` and push.
+3. `git tag 0.3.0 && git push origin 0.3.0`
+
+The tag triggers the tests, then a build whose version must match `pyproject.toml` (the workflow
+fails otherwise), then the upload to PyPI. `make publish` prints this checklist with the current
+version.
+
 ## Citation
 
 Sacha Schutz, Meganne Souprayen. *Watermark tabular datasets with rows permutations and fountain

@@ -8,12 +8,15 @@ name = "steganodf"
 version = "0.2.5"
 description = "A library for hiding a secret message on tabulated data" 
 readme = "README.md"
-requires-python = ">=3.9"
+requires-python = ">=3.11"
 
 license = "AGPL-3.0"
 classifiers = [
+  "Development Status :: 4 - Beta",
   "Programming Language :: Python :: 3 :: Only",
-  "License :: OSI Approved :: GNU Affero General Public License v3",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
   "Natural Language :: English", 
   "Topic :: Security :: Cryptography", 
   "Topic :: Scientific/Engineering :: Information Analysis"
@@ -28,8 +31,22 @@ authors = [
   {name="Sacha Schutz", email="sacha.schutz@pm.me"}
 ]
 
+[project.urls]
+Homepage = "https://github.com/dridk/steganodf"
+Repository = "https://github.com/dridk/steganodf"
+Documentation = "https://dridk.github.io/steganodf/"
+Issues = "https://github.com/dridk/steganodf/issues"
+
 [project.scripts]
 steganodf = "steganodf.__main__:main"
 
 [project.optional-dependencies]
 dev= ["pytest", "twine", "build", "pandas", "pyarrow"]
+
+[tool.hatch.build.targets.sdist]
+include = ["steganodf", "tests", "examples", "README.md", "LICENSE", "pyproject.toml"]
+# examples/*.csv est couvert par le *.csv du .gitignore : il faut le réinclure explicitement.
+artifacts = ["examples/*.csv"]
+
+[tool.hatch.build.targets.wheel]
+packages = ["steganodf"]
