@@ -29,8 +29,14 @@ the dataframe never leaves your machine — **<https://dridk.github.io/steganodf
 
 ### From the command line
 
-With [uv](https://docs.astral.sh/uv/), `uvx steganodf ...` runs the command line in a throwaway
-environment, without installing anything. Otherwise install it the usual way:
+With [uv](https://docs.astral.sh/uv/) runs the command line in a throwaway
+environment, without installing anything:
+
+```bash 
+uvx steganodf -h
+```
+
+Otherwise install it the usual way:
 
 ```bash
 pip install steganodf
@@ -74,13 +80,6 @@ watermarked = steganodf.encode(df, b"made by steganodf", password="secret")
 message = steganodf.decode(watermarked, password="secret")
 ```
 
-`decode` returns empty bytes when no complete message could be recovered, so "no watermark here"
-and "the watermark says nothing" look alike; `decode_details` and `try_decode` (below) both report
-a `success` flag instead.
-
-Pass `algorithm=` to `encode` and `decode`. Both sides must agree on the algorithm and on every
-parameter that affects the framing (`password`, `bit_per_row`, `data_size`, `sort_columns`…).
-
 ```python
 # A shuffle-resistant watermark
 watermarked = steganodf.encode(df, b"made by steganodf", algorithm="bitvote")
@@ -101,9 +100,7 @@ watermarked = algorithm.encode(df, b"a much longer message ...")
 ```
 
 If you receive a watermarked dataframe without being told which algorithm wrote it, pass
-`algorithm="auto"`. Every algorithm validates what it reads with a CRC32, so one that was not
-used to encode reports a failure rather than returning garbage; steganodf tries them in turn and
-stops at the first success.
+`algorithm="auto"`. 
 
 ```python
 steganodf.decode(df, algorithm="auto", password="secret")   # b'made by steganodf'
@@ -117,13 +114,6 @@ steganodf.try_decode(df, password="secret")
 #  'margin_min': 469, 'algorithm': 'bitvote', 'tried': ['bitvote']}
 ```
 
-Only the **default** parameters are tried. `bit_per_row`, `data_size` and `redundancy` must match
-between encoding and decoding and cannot be guessed, so a dataframe watermarked with
-`BitPool(bit_per_row=8)` will not be found by auto decoding — but everything the command line
-produces will, since it always uses the defaults. The password is not guessed either.
-
-The candidates are tried cheapest first (`bitvote`, `bitghost`, `bitpool`, `bitsync`), so the slow
-ones only run once the fast ones have failed.
 
 ## Algorithms in detail
 
@@ -163,20 +153,6 @@ steganodf requires **Python 3.11+** and is developed with [uv](https://docs.astr
 uv sync --extra dev
 uv run pytest --doctest-modules steganodf tests   # or: make test
 ```
-
-Every push and pull request on `main` and `dev` runs the test suite on Python 3.11 and 3.13
-(`.github/workflows/tests.yml`).
-
-Releasing to PyPI is automated (`.github/workflows/publish.yml`, trusted publishing over OIDC —
-no API token). To cut a release:
-
-1. On `dev`: bump `version` in `pyproject.toml`, run `uv lock`, commit.
-2. Merge `dev` into `main` and push.
-3. `git tag 0.3.0 && git push origin 0.3.0`
-
-The tag triggers the tests, then a build whose version must match `pyproject.toml` (the workflow
-fails otherwise), then the upload to PyPI. `make publish` prints this checklist with the current
-version.
 
 ## Citation
 
