@@ -29,8 +29,14 @@ the dataframe never leaves your machine — **<https://dridk.github.io/steganodf
 
 ### From the command line
 
-With [uv](https://docs.astral.sh/uv/), `uvx steganodf ...` runs the command line in a throwaway
-environment, without installing anything. Otherwise install it the usual way:
+With [uv](https://docs.astral.sh/uv/) runs the command line in a throwaway
+environment, without installing anything:
+
+```bash 
+uvx steganodf -h
+```
+
+Otherwise install it the usual way:
 
 ```bash
 pip install steganodf
