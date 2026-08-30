@@ -1,12 +1,19 @@
 import inspect
 import logging
 from contextlib import contextmanager
+from importlib.metadata import PackageNotFoundError
+from importlib.metadata import version as _package_version
 from typing import Dict, List, Optional, Sequence
 
 import polars as pl
 
 from steganodf.algorithms.algorithm import Algorithm, AlgorithmError
 from .algorithms import ALGORITHMS, BitPool, BitSync, BitVote, BitGhost
+
+try:
+    __version__ = _package_version("steganodf")
+except PackageNotFoundError:  # a source tree that was never installed
+    __version__ = "unknown"
 
 # Order in which try_decode tries the algorithms: cheapest decoder first, so the
 # expensive ones only run once the cheap ones have all failed. BitVote and

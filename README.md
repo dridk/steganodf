@@ -37,6 +37,8 @@ pip install steganodf
 ```
 
 ```bash
+steganodf --version
+
 # Encoding
 steganodf encode -m hello host.csv stegano.csv
 steganodf encode -m hello host.parquet stegano.parquet

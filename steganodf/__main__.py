@@ -55,6 +55,13 @@ def parse_cli(args=None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         prog="steganodf", description="a Tool to hide a message in a tabular file"
     )
+    parser.add_argument(
+        "--version",
+        "-V",
+        action="version",
+        version=f"steganodf {st.__version__}",
+        help="Show the installed version and exit",
+    )
     subparsers = parser.add_subparsers(dest="command", required=True)
 
     def add_common_args(subparser, allow_auto=False):
