@@ -100,9 +100,7 @@ watermarked = algorithm.encode(df, b"a much longer message ...")
 ```
 
 If you receive a watermarked dataframe without being told which algorithm wrote it, pass
-`algorithm="auto"`. Every algorithm validates what it reads with a CRC32, so one that was not
-used to encode reports a failure rather than returning garbage; steganodf tries them in turn and
-stops at the first success.
+`algorithm="auto"`. 
 
 ```python
 steganodf.decode(df, algorithm="auto", password="secret")   # b'made by steganodf'
@@ -116,13 +114,6 @@ steganodf.try_decode(df, password="secret")
 #  'margin_min': 469, 'algorithm': 'bitvote', 'tried': ['bitvote']}
 ```
 
-Only the **default** parameters are tried. `bit_per_row`, `data_size` and `redundancy` must match
-between encoding and decoding and cannot be guessed, so a dataframe watermarked with
-`BitPool(bit_per_row=8)` will not be found by auto decoding — but everything the command line
-produces will, since it always uses the defaults. The password is not guessed either.
-
-The candidates are tried cheapest first (`bitvote`, `bitghost`, `bitpool`, `bitsync`), so the slow
-ones only run once the fast ones have failed.
 
 ## Algorithms in detail
 
