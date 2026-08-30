@@ -42,6 +42,7 @@
   var $ = function (id) { return document.getElementById(id); };
 
   var el = {
+    version: $("version"),
     sidebar: $("sidebar"),
     dropZone: $("drop-zone"),
     fileCard: $("file-card"),
@@ -238,6 +239,13 @@
       el.rowCount.textContent = Number(rows).toLocaleString("en-US");
       el.colCount.textContent = String(cols);
       renderColumns();
+    },
+
+    // Filled in by main.py from the wheel actually loaded, so the header
+    // can never claim a version the page is not running.
+    setVersion: function (version) {
+      el.version.textContent = "v" + version;
+      el.version.hidden = !version;
     },
 
     // `bytes` is null while unknown, which blanks the tile.
