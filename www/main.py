@@ -229,6 +229,8 @@ async def decode(event=None) -> None:
     status(f"Decoded {len(payload)} bytes with {name}.", "info")
 
 
+window.steg.setVersion(st.__version__)
+
 add_event_listener(document.getElementById("file-upload"), "change", load_file)
 add_event_listener(document.getElementById("remove-file"), "click", clear_dataset)
 for selector in ("#algo-select", "#bit-select", "#password"):

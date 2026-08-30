@@ -20,23 +20,18 @@ jobs:
         with:
           python-version: '3.x'
 
-      - name: Install python deps 
-        run: |
-          python -m pip install build
+      - name: Install python deps
+        run: python -m pip install build
 
-      - name: Build wheel package
-        run: |
-          python -m build --wheel --outdir www/
+      # Builds the wheel, fetches polars and reedsolo, and regenerates
+      # pyscript.json so it points at the wheel we are about to deploy.
+      - name: Build the site payload
+        run: ./build_site.sh
 
-      - name: Download polars
-        run: wget -P www https://github.com/pola-rs/polars/releases/download/py-1.19.0/polars-1.19.0-cp39-abi3-emscripten_3_1_58_wasm32.whl
-
-      - name: Download reedsolo
-        run: wget -P www https://files.pythonhosted.org/packages/09/19/1bb346c0e581557c88946d2bb979b2bee8992e72314cfb418b5440e383db/reedsolo-1.7.0-py3-none-any.whl
-
-      - name: Check files 
+      - name: Check files
         run: |
           ls www/
+          cat www/pyscript.json
 
       - name: Deploy page
         uses: JamesIves/github-pages-deploy-action@v4 
