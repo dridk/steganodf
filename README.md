@@ -18,18 +18,23 @@ three at once:
 - **Invisibility** — how much the original data is distorted, and how easily an observer can tell
   that a watermark is there at all.
 
-Steganodf ships **four algorithms** that sit at different points of that trade-off. 
+Steganodf ships **four algorithms** that sit at different points of that trade-off.
 
-## Try it in your browser
+## Usage
 
-The web app runs the whole library in your browser — nothing is uploaded, the dataframe never
-leaves your machine: **<https://dridk.github.io/steganodf/>**
+### Try it in your browser
 
-## From the command line
+The web app runs the whole library in your browser, compiled to WebAssembly: nothing is uploaded,
+the dataframe never leaves your machine — **<https://dridk.github.io/steganodf/>**
 
-`pip install steganodf` gives you a permanent `steganodf` command. With
-[uv](https://docs.astral.sh/uv/), `uvx steganodf ...` runs the same command line in a throwaway
-environment, without installing anything.
+### From the command line
+
+With [uv](https://docs.astral.sh/uv/), `uvx steganodf ...` runs the command line in a throwaway
+environment, without installing anything. Otherwise install it the usual way:
+
+```bash
+pip install steganodf
+```
 
 ```bash
 # Encoding
@@ -52,62 +57,7 @@ steganodf decode -a auto stegano.csv
 The CLI reads and writes `.csv` and `.parquet`, and exposes `--password`, `--column` and
 `--algorithm`. Tuning parameters such as `bit_per_row` or `data_size` are Python-only.
 
-Prefix any of them with `uvx` to skip the installation entirely:
-
-```bash
-uvx steganodf encode -m hello host.csv stegano.csv
-uvx steganodf decode stegano.csv                    # hello
-```
-
-`uvx steganodf` needs a release >= 0.3.0. Until it is published, run the development version
-straight from the repository:
-
-```bash
-uvx --from git+https://github.com/dridk/steganodf@dev steganodf decode stegano.csv
-```
-
-## Choosing an algorithm
-
-**The three methods:**
-
-- **permutation** — the message lives in the *order of the rows*. Nothing is written to the data
-  itself, so the dataset is bit-for-bit the same multiset of rows. The price is that any operation
-  that re-orders the table erases the message.
-- **alteration** — the message lives in the *least significant bits* of one numeric column. The
-  values change, by one unit in the last place, and the row order becomes irrelevant.
-- **synthesis** — the message lives in *extra rows* that steganodf fabricates and inserts. Existing
-  values are never touched, but the dataset gains records that were not in it.
-
-
-## Benchmark
-
-Measured on a 100 000-row, 4-column frame (`Int64`, `Utf8`, two `Float64`) with a 16-byte payload.
-
-
-| Algorithm and settings | Method | Destroys original data  | Max capacity (100k rows) | Tolerates cell edits | Tolerates row deletion | Survives sorting | Invisibility |
-|---|---|---|---|---|---|---|---|
-| **`bitpool`** `bit_per_row=1`  | permutation | no — rows are only reordered | 4.4 kB | 2 % | 2 % | ❌ | perfect — not one cell changed |
-| **`bitpool`** `bit_per_row=8` | permutation | no — rows are only reordered | **29 kB** | 12 % | 20 % | ❌ | perfect — not one cell changed |
-| **`bitsync`** default `max_drift` (44 s decode) | permutation | no — rows are only reordered | 2.1 kB | 1.5 % | 4 % | ❌ | perfect — not one cell changed |
-| **`bitsync`** `max_drift=256` (5.7 s decode) | permutation | no — rows are only reordered | 2.1 kB | 2 % | 3 % | ❌ | perfect — not one cell changed |
-| **`bitvote`** `data_size=24` | alteration | 1 ULP on one numeric column | 19 B | **45 %** | **95 %** | ✅ | very high — relative change of 2.2e-16 |
-| **`bitvote`** `data_size=260` | alteration | 1 ULP on one numeric column | 255 B | 15 % | 85 % | ✅ | very high — relative change of 2.2e-16 |
-| **`bitghost`** `redundancy=8` | synthesis | +168 fabricated rows | 250 B | 18 % | 50 % | ✅ | low — the fake rows are visible |
-| **`bitghost`** `redundancy=32` | synthesis | +672 fabricated rows | 250 B | 40 % | 80 % | ✅ | low — the fake rows are visible |
-
-
-## Python API
-
-### Installation
-
-```bash
-pip install steganodf
-```
-
-You can also try the library without installing anything, in this
-[Google Colab notebook](https://colab.research.google.com/drive/1cp0WaIOO7Xj3ObwR9vr4Nae5KSwyW61e?usp=sharing).
-
-### Encode and decode
+### From Python
 
 ```python
 import steganodf
@@ -122,17 +72,9 @@ watermarked = steganodf.encode(df, b"made by steganodf", password="secret")
 message = steganodf.decode(watermarked, password="secret")
 ```
 
-`decode` returns empty bytes when no complete message could be recovered. To tell "this dataframe
-carries no watermark" apart from "the watermark was read successfully", use `decode_details`:
-
-```python
-from steganodf.algorithms import BitPool
-
-BitPool(password="secret").decode_details(df)
-# {'payload': b'made by steganodf', 'success': True, 'block_count': 1, 'mode': 'short'}
-```
-
-### Picking an algorithm
+`decode` returns empty bytes when no complete message could be recovered, so "no watermark here"
+and "the watermark says nothing" look alike; `decode_details` and `try_decode` (below) both report
+a `success` flag instead.
 
 Pass `algorithm=` to `encode` and `decode`. Both sides must agree on the algorithm and on every
 parameter that affects the framing (`password`, `bit_per_row`, `data_size`, `sort_columns`…).
@@ -155,17 +97,6 @@ algorithm = BitPool(bit_per_row=8, password="secret")
 algorithm.get_max_payload_size(df)          # conservative estimate, in bytes
 watermarked = algorithm.encode(df, b"a much longer message ...")
 ```
-
-These are the tuned settings of the second row of each algorithm in the table above:
-
-```python
-BitPool(bit_per_row=8, password="secret")     # 29 kB instead of 4.4 kB
-BitSync(max_drift=256, password="secret")     # 5.7 s instead of 44 s to decode
-BitVote(data_size=260, password="secret")     # 255 B instead of 19 B
-BitGhost(redundancy=32, password="secret")    # tolerates 80 % of rows being deleted
-```
-
-### Decoding without knowing the algorithm
 
 If you receive a watermarked dataframe without being told which algorithm wrote it, pass
 `algorithm="auto"`. Every algorithm validates what it reads with a CRC32, so one that was not
@@ -194,8 +125,33 @@ ones only run once the fast ones have failed.
 
 ## Algorithms in detail
 
+**The three methods:**
+
+- **permutation** — the message lives in the *order of the rows*. Nothing is written to the data
+  itself, so the dataset is bit-for-bit the same multiset of rows. The price is that any operation
+  that re-orders the table erases the message.
+- **alteration** — the message lives in the *least significant bits* of one numeric column. The
+  values change, by one unit in the last place, and the row order becomes irrelevant.
+- **synthesis** — the message lives in *extra rows* that steganodf fabricates and inserts. Existing
+  values are never touched, but the dataset gains records that were not in it.
+
 [DETAIL.md](DETAIL.md) covers each algorithm in turn — what it is built on, what it is good at,
 where it breaks — plus the threat model.
+
+## Benchmark
+
+Measured on a 100 000-row, 4-column frame (`Int64`, `Utf8`, two `Float64`) with a 16-byte payload.
+
+| Algorithm and settings | Method | Destroys original data  | Max capacity (100k rows) | Tolerates cell edits | Tolerates row deletion | Survives sorting | Invisibility |
+|---|---|---|---|---|---|---|---|
+| **`bitpool`** `bit_per_row=1`  | permutation | no — rows are only reordered | 4.4 kB | 2 % | 2 % | ❌ | perfect — not one cell changed |
+| **`bitpool`** `bit_per_row=8` | permutation | no — rows are only reordered | **29 kB** | 12 % | 20 % | ❌ | perfect — not one cell changed |
+| **`bitsync`** default `max_drift` (44 s decode) | permutation | no — rows are only reordered | 2.1 kB | 1.5 % | 4 % | ❌ | perfect — not one cell changed |
+| **`bitsync`** `max_drift=256` (5.7 s decode) | permutation | no — rows are only reordered | 2.1 kB | 2 % | 3 % | ❌ | perfect — not one cell changed |
+| **`bitvote`** `data_size=24` | alteration | 1 ULP on one numeric column | 19 B | **45 %** | **95 %** | ✅ | very high — relative change of 2.2e-16 |
+| **`bitvote`** `data_size=260` | alteration | 1 ULP on one numeric column | 255 B | 15 % | 85 % | ✅ | very high — relative change of 2.2e-16 |
+| **`bitghost`** `redundancy=8` | synthesis | +168 fabricated rows | 250 B | 18 % | 50 % | ✅ | low — the fake rows are visible |
+| **`bitghost`** `redundancy=32` | synthesis | +672 fabricated rows | 250 B | 40 % | 80 % | ✅ | low — the fake rows are visible |
 
 ## Development and releases
 
