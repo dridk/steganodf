@@ -3,6 +3,6 @@
     "polars-1.19.0-cp39-abi3-emscripten_3_1_58_wasm32.whl",
     "reedsolo-1.7.0-py3-none-any.whl",
     "numpy",
-    "steganodf-0.2.5-py3-none-any.whl"
+    "steganodf-0.3.1-py3-none-any.whl"
   ]
 }
